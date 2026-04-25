@@ -1,0 +1,42 @@
+Experiment analysis report
+========================
+
+Summary per n_agents:
+n=1: total_latency_mean=0.0015s, total_latency_std=0.0011s, total_latency_p95=0.0033s
+  coordination_tax_mean=0.0013s (86.1% of total), sync_delay_mean=0.0000s, f1_mean=0.9231
+n=2: total_latency_mean=0.0013s, total_latency_std=0.0005s, total_latency_p95=0.0023s
+  coordination_tax_mean=0.0012s (90.6% of total), sync_delay_mean=0.0002s, f1_mean=0.9231
+n=4: total_latency_mean=0.0022s, total_latency_std=0.0023s, total_latency_p95=0.0039s
+  coordination_tax_mean=0.0021s (94.8% of total), sync_delay_mean=0.0002s, f1_mean=0.9260
+n=6: total_latency_mean=0.0020s, total_latency_std=0.0009s, total_latency_p95=0.0036s
+  coordination_tax_mean=0.0020s (96.3% of total), sync_delay_mean=0.0000s, f1_mean=0.9231
+n=8: total_latency_mean=0.0021s, total_latency_std=0.0009s, total_latency_p95=0.0038s
+  coordination_tax_mean=0.0020s (96.3% of total), sync_delay_mean=0.0001s, f1_mean=0.9231
+n=12: total_latency_mean=0.0029s, total_latency_std=0.0012s, total_latency_p95=0.0055s
+  coordination_tax_mean=0.0028s (97.3% of total), sync_delay_mean=0.0000s, f1_mean=0.9231
+n=16: total_latency_mean=0.0036s, total_latency_std=0.0013s, total_latency_p95=0.0061s
+  coordination_tax_mean=0.0035s (97.7% of total), sync_delay_mean=0.0002s, f1_mean=0.9231
+
+Total latency increased by 145.2% from n=1 to n=16.
+Average coordination tax fraction across n: 94.2%
+Interpretation: coordination overhead dominates compute; adding agents mainly increases waiting/merge overhead for this workload.
+
+Throughput (tokens/sec) mean by n_agents:
+  n=1: mean=20107.1 tok/s, std=7850.5
+  n=2: mean=20742.2 tok/s, std=7279.0
+  n=4: mean=13895.1 tok/s, std=5400.4
+  n=6: mean=13166.6 tok/s, std=4523.4
+  n=8: mean=12542.8 tok/s, std=3955.6
+  n=12: mean=8991.4 tok/s, std=2949.9
+  n=16: mean=7059.4 tok/s, std=2024.2
+
+Accuracy (F1) by n_agents:
+  n=1: mean_f1=0.923, std=0.000
+  n=2: mean_f1=0.923, std=0.000
+  n=4: mean_f1=0.926, std=0.015
+  n=6: mean_f1=0.923, std=0.000
+  n=8: mean_f1=0.923, std=0.000
+  n=12: mean_f1=0.923, std=0.000
+  n=16: mean_f1=0.923, std=0.000
+
+Best F1/latency tradeoff at n=2 (efficiency=723.923)
