@@ -5,11 +5,11 @@ from spacy.cli import download
 
 # --- ML-based (spaCy) ---
 try:
-    nlp = spacy.load("en_core_web_sm")
+    nlp = spacy.load("en_core_web_trf")
 except OSError:
-    print("Downloading spaCy model 'en_core_web_sm'...")
-    download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
+    print("Downloading spaCy model 'en_core_web_trf'...")
+    download("en_core_web_trf")
+    nlp = spacy.load("en_core_web_trf")
 
 def detect_and_mask_pii_spacy(text):
     doc = nlp(text)
