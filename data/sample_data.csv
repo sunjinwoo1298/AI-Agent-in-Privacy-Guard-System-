@@ -1,0 +1,6 @@
+text,label
+"My name is John Doe and my email is john.doe@example.com.",NAME;EMAIL
+"Please contact Jane Doe at jane.doe@work.net for details.",NAME;EMAIL
+"Call me at (123) 456-7890.",PHONE
+"My number is 555-123-4567.",PHONE
+"Agent Smith's ID is 98765.",NAME;ID
