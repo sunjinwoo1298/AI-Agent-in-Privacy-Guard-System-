@@ -1,5 +1,9 @@
 import pandas as pd
-from src.single_agent import detect_and_mask_pii_regex, detect_and_mask_pii_spacy
+from src.single_agent import (
+    detect_and_mask_pii_regex, 
+    detect_and_mask_pii_spacy,
+    detect_and_mask_pii_llm
+)
 
 def run_single_agent_evaluation():
     """
@@ -20,10 +24,16 @@ def run_single_agent_evaluation():
         df['spacy_masked'] = df['text'].apply(detect_and_mask_pii_spacy)
         print(df['spacy_masked'])
 
+        # --- LLM Agent (Groq) ---
+        print("\n--- Masking with LLM-based single agent (Groq) ---")
+        df['llm_masked'] = df['text'].apply(detect_and_mask_pii_llm)
+        print(df['llm_masked'])
+
     except FileNotFoundError:
         print("Error: data/sample_data.csv not found.")
         print("Please ensure you have created the sample data file.")
 
 if __name__ == '__main__':
     run_single_agent_evaluation()
+
 
