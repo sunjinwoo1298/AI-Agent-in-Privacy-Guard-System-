@@ -1,6 +1,64 @@
 text,label
-"My name is John Doe and my email is john.doe@example.com.",NAME;EMAIL
-"Please contact Jane Doe at jane.doe@work.net for details.",NAME;EMAIL
-"Call me at (123) 456-7890.",PHONE
-"My number is 555-123-4567.",PHONE
-"Agent Smith's ID is 98765.",NAME;ID
+"My name is Michael Anderson and you can reach me at michael.anderson92@gmail.com.",NAME;EMAIL
+"Contact Sarah Johnson via sarah_j@company.org regarding the project update.",NAME;EMAIL
+"Dr. Emily Carter's office number is (212) 555-9182.",NAME;PHONE
+"Please call Robert Williams at +1-646-234-7788 tomorrow morning.",NAME;PHONE
+"The employee ID of David Brown is EMP45821.",NAME;ID
+"Agent Olivia Smith has identification number ID-99871 assigned for the case.",NAME;ID
+"My Aadhaar number is 4587-9123-6678 and my name is Tarun Verma.",NAME;AADHAR
+"Customer Priya Sharma registered using Aadhaar ID 7834-1122-9087.",NAME;AADHAR
+"Use card number 4532-7645-9987-1234 for the online payment.",CREDIT_CARD
+"John Miller paid with Visa card 4111 1111 1111 1111 yesterday.",NAME;CREDIT_CARD
+"Please transfer the amount to bank account 987654321234 under the name Ravi Kumar.",BANK_ACCOUNT;NAME
+"My IFSC code is HDFC0004587 and account number is 554433221100.",BANK_ACCOUNT
+"Employee Ethan Clark lives at 742 Evergreen Terrace, Springfield.",NAME;ADDRESS
+"Ship the package to 221B Baker Street, London immediately.",ADDRESS
+"My passport number is N4587123 and my flight is tomorrow.",PASSPORT
+"Traveler Sophia Lee submitted passport ID P9987124 for verification.",NAME;PASSPORT
+"The patient's medical record number is MRN-778812.",MEDICAL_ID
+"Patient Jacob Wilson tested positive and his insurance ID is INS-449921.",NAME;MEDICAL_ID
+"My social security number is 123-45-6789.",SSN
+"Emma Watson's SSN is 987-65-4321.",NAME;SSN
+"Login credentials: username admin_user and password Secure@123.",USERNAME;PASSWORD
+"Do not share your password Pass@2025 with anyone.",PASSWORD
+"Reach out to support at helpdesk@securebank.com or call 800-555-1212.",EMAIL;PHONE
+"Professor Alan Turing can be contacted at alan.turing@university.edu.",NAME;EMAIL
+"The registered mobile number for Neha Kapoor is +91 98765 43210.",NAME;PHONE
+"My PAN number is ABCDE1234F for tax filing purposes.",PAN
+"Ananya Gupta submitted PAN ID PQRSX9087K during onboarding.",NAME;PAN
+"The WiFi password for the office network is OfficeNet@2026.",PASSWORD
+"Security officer Daniel Reed badge ID is SEC-55221.",NAME;ID
+"Customer support executive Maria Lopez uses employee ID EMP90012.",NAME;ID
+"Send confidential files to ceo.office@futuretech.ai only.",EMAIL
+"The recovery email linked to the account is recovery.mail99@yahoo.com.",EMAIL
+"My alternate contact number is 202-555-0188.",PHONE
+"Please verify account holder Kevin Hart before processing account 443322110099.",NAME;BANK_ACCOUNT
+"The courier should be delivered to Flat 302, Palm Residency, Mumbai.",ADDRESS
+"User Olivia Brown logged in using username olivia_b and password Olivia@321.",NAME;USERNAME;PASSWORD
+"Doctor Henry Adams prescribed medication under patient ID PT-112233.",NAME;MEDICAL_ID
+"Reach cybersecurity analyst Ethan Walker at ethan.walker@cybercorp.io.",NAME;EMAIL
+"The suspect known as Alex Carter used passport number XZ998712 during travel.",NAME;PASSPORT
+"Emergency hotline number is +44 7700 900123 for immediate assistance.",PHONE
+"Client Jennifer Davis shared card details 5555-4444-3333-2222 accidentally.",NAME;CREDIT_CARD
+"My office extension is 4456 and direct line is 303-555-7821.",PHONE
+"The API key generated for the service is sk_live_45hd82js92ks.",API_KEY
+"GitHub personal access token ghp_45jd82ksla90zx was exposed publicly.",API_KEY
+"Amazon AWS secret key AKIAIOSFODNN7EXAMPLE should remain private.",API_KEY
+"The confidential database URI is mongodb://admin:Pass123@localhost:27017.",USERNAME;PASSWORD
+"Ritika Mehra's voter ID is DLX9087123.",NAME;VOTER_ID
+"Citizen Arjun Nair registered using voter identification KL998877.",NAME;VOTER_ID
+"The device MAC address is 00:1A:2B:3C:4D:5E.",DEVICE_ID
+"Server IP address 192.168.1.25 was flagged during monitoring.",IP_ADDRESS
+"Admin Rahul logged in from IP 10.0.0.45 yesterday.",NAME;IP_ADDRESS
+"The crypto wallet address is 0x71C7656EC7ab88b098defB751B7401B5f6d8976F.",CRYPTO_WALLET
+"User Isabella Moore linked PayPal account isabella.finance@paypal.com.",NAME;EMAIL
+"The biometric access ID BIO-778899 belongs to employee Chris Evans.",NAME;BIOMETRIC_ID
+"Send OTP to registered number +91-9123456789 for authentication.",PHONE
+"The hidden surveillance unit serial number is SN-009912-ALPHA.",DEVICE_ID
+"CEO Richard Hammond resides at 88 Sunset Boulevard, Los Angeles.",NAME;ADDRESS
+"The backup administrator email is sysadmin.backup@cloudinfra.net.",EMAIL
+"Use routing number 021000021 along with account number 5566778899.",BANK_ACCOUNT
+"The confidential patient file belongs to Natalie Brooks, MRN-889921.",NAME;MEDICAL_ID
+"The company issued laptop serial number is LAP-99887766.",DEVICE_ID
+"My driving license number is DL-0420110149646.",DRIVING_LICENSE
+"Officer Liam Scott submitted driving license DL-8899001122 for validation.",NAME;DRIVING_LICENSE

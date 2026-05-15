@@ -28,10 +28,9 @@ from config import GROQ_API_KEY
 from core.state import MaskingResult, MaskingStrategy, RoleName
 from evaluation.token_tracking import GroqTokenTracker, approx_token_count
 
-from src.single_agent import (
+from src.masking_functions import (
     detect_and_mask_pii_regex,
     detect_and_mask_pii_spacy,
-    detect_and_mask_pii_llm,
 )
 
 
@@ -68,15 +67,12 @@ class PrivacyMasker:
 
         privacy_cfg = self._config.get("privacy") or {}
         self.default_strategy: MaskingStrategy = privacy_cfg.get(
-            "default_strategy", "hybrid_fast"
-        )
-        self.llm_fallback_strategy: MaskingStrategy = privacy_cfg.get(
-            "llm_fallback_strategy", "hybrid_fast"
+            "default_strategy", "spacy_plus"
         )
 
     @staticmethod
     def _llm_available() -> bool:
-        return bool(GROQ_API_KEY) and GROQ_API_KEY != "YOUR_API_KEY"
+        return False
 
     def analyze_text(self, text: str) -> RouterSignals:
         """Compute cheap signals for routing decisions."""
@@ -109,13 +105,10 @@ class PrivacyMasker:
     def route(self, text: str) -> MaskingStrategy:
         """Choose a masking strategy based on heuristics.
 
-        Strategies (required by spec)
+        Strategies
         ----------------------------
         - regex_only
         - spacy_plus
-        - hybrid_fast
-        - llm_only
-        - hybrid_llm
         """
 
         s = self.analyze_text(text)
@@ -124,17 +117,9 @@ class PrivacyMasker:
         if s.text_len <= self.short_text_threshold and s.regex_hits > 0 and s.sensitivity_score == 0:
             return "regex_only"
 
-        # High sensitivity keywords → prefer LLM hybrid if possible
-        if s.sensitivity_score >= 2:
-            return "hybrid_llm" if self._llm_available() else "hybrid_fast"
-
         # No regex hits but many proper-noun-like tokens → spaCy
         if s.regex_hits == 0 and s.capitalized_token_ratio >= 0.25:
             return "spacy_plus"
-
-        # Very long inputs → avoid LLM by default (cost/latency)
-        if s.text_len >= self.long_text_threshold:
-            return "hybrid_fast"
 
         # Default middle-ground
         return self.default_strategy
@@ -175,59 +160,6 @@ class PrivacyMasker:
             elif chosen == "spacy_plus":
                 masked = detect_and_mask_pii_spacy(text)
 
-            elif chosen == "llm_only":
-                prompt = self._build_llm_prompt(text)
-                with GroqTokenTracker() as tracker:
-                    masked = detect_and_mask_pii_llm(text)
-                if self._looks_like_error(masked):
-                    error = masked
-
-                call_attempted = tracker.calls_attempted > 0 or (
-                    self._llm_available()
-                    and not masked.startswith("Error: Groq API key not configured")
-                )
-                if call_attempted:
-                    llm_usage = tracker.last_usage
-                    llm_usage_approx = tracker.last_usage_approx or {
-                        "prompt_tokens": approx_token_count(prompt),
-                        "completion_tokens": approx_token_count(masked),
-                        "total_tokens": approx_token_count(prompt)
-                        + approx_token_count(masked),
-                        "model": "llama3-8b-8192",
-                    }
-
-            elif chosen == "hybrid_fast":
-                masked = detect_and_mask_pii_spacy(detect_and_mask_pii_regex(text))
-
-            elif chosen == "hybrid_llm":
-                # Fast pre-mask, then ask LLM to catch harder PII.
-                pre = detect_and_mask_pii_regex(text)
-                prompt = self._build_llm_prompt(pre)
-                with GroqTokenTracker() as tracker:
-                    masked = detect_and_mask_pii_llm(pre)
-                if self._looks_like_error(masked):
-                    # Treat LLM failure as non-fatal if we can fall back to a
-                    # deterministic strategy, so aggregation can still use the
-                    # validator's final output.
-                    llm_error = masked
-                    chosen = self.llm_fallback_strategy
-                    # Fallback keeps the pre-mask and adds spaCy if available.
-                    masked = detect_and_mask_pii_spacy(pre)
-
-                call_attempted = tracker.calls_attempted > 0 or (
-                    self._llm_available()
-                    and not masked.startswith("Error: Groq API key not configured")
-                )
-                if call_attempted:
-                    llm_usage = tracker.last_usage
-                    llm_usage_approx = tracker.last_usage_approx or {
-                        "prompt_tokens": approx_token_count(prompt),
-                        "completion_tokens": approx_token_count(masked),
-                        "total_tokens": approx_token_count(prompt)
-                        + approx_token_count(masked),
-                        "model": "llama3-8b-8192",
-                    }
-
             else:
                 # Defensive fallback (should not happen if types are respected)
                 masked = detect_and_mask_pii_regex(text)
@@ -242,15 +174,8 @@ class PrivacyMasker:
         details: Dict[str, Any] = {
             "signals": signals.__dict__,
             "placeholder_count": self._placeholder_count(masked),
-            "llm_available": self._llm_available(),
+            "llm_available": False,
         }
-
-        if llm_usage is not None:
-            details["llm_usage"] = llm_usage
-        if llm_usage_approx is not None:
-            details["llm_usage_approx"] = llm_usage_approx
-        if llm_error is not None:
-            details["llm_error"] = llm_error
 
         return MaskingResult(
             agent_id=agent_id,
