@@ -30,8 +30,23 @@ This loads `data/sample_data.csv` and prints masked outputs for:
 ## Run: PrivMAS (Multi-Agent)
 - `python main.py --privmas`
 
+Run PrivMAS on a different dataset:
+- `python main.py --privmas --data-path data/real_long_data.csv --max-rows 2`
+
 Optional ablation overrides (vary N):
 - `python main.py --privmas --detectors 2 --analyzers 1 --validators 1`
 
 Config file:
 - Edit `config.yaml` to change default strategies, aggregation policy, and role counts.
+
+## Run: PrivMAS Sweep (agent-count ablation)
+
+This sweep runs PrivMAS over a dataset while varying the specialist agent count,
+writes raw rows to a CSV, and generates a "privacy quality vs coordination overhead"
+tradeoff plot.
+
+- `python experiments/run_privmas_sweep.py --data-path data/real_long_data.csv --n-values 1,2,3 --max-rows 2`
+
+Outputs:
+- `results/privmas_runs.csv`
+- `results/plots/privmas/privacy_quality_vs_overhead.png`

@@ -49,15 +49,14 @@ except OSError:
 
 def detect_and_mask_pii_spacy(text):
     doc = nlp(text)
-    masked_text = list(text)
-    
-    for ent in doc.ents:
-        if ent.label_ in ["PERSON", "ORG"]:
-            start = ent.start_char
-            end = ent.end_char
-            masked_text[start:end] = f"[{ent.label_}]"
-    
-    return "".join(masked_text)
+
+    # Replace entities from right-to-left so offsets remain valid.
+    masked = text
+    ents = [ent for ent in doc.ents if ent.label_ in ["PERSON", "ORG"]]
+    for ent in sorted(ents, key=lambda e: e.start_char, reverse=True):
+        masked = masked[: ent.start_char] + f"[{ent.label_}]" + masked[ent.end_char :]
+
+    return masked
 
 # --- Rule-based (Regex) ---
 def detect_and_mask_pii_regex(text):

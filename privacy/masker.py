@@ -162,6 +162,7 @@ class PrivacyMasker:
 
         start = time.perf_counter()
         error: Optional[str] = None
+        llm_error: Optional[str] = None
         masked = text
 
         llm_usage: Optional[Dict[str, Any]] = None
@@ -205,7 +206,10 @@ class PrivacyMasker:
                 with GroqTokenTracker() as tracker:
                     masked = detect_and_mask_pii_llm(pre)
                 if self._looks_like_error(masked):
-                    error = masked
+                    # Treat LLM failure as non-fatal if we can fall back to a
+                    # deterministic strategy, so aggregation can still use the
+                    # validator's final output.
+                    llm_error = masked
                     chosen = self.llm_fallback_strategy
                     # Fallback keeps the pre-mask and adds spaCy if available.
                     masked = detect_and_mask_pii_spacy(pre)
@@ -245,6 +249,8 @@ class PrivacyMasker:
             details["llm_usage"] = llm_usage
         if llm_usage_approx is not None:
             details["llm_usage_approx"] = llm_usage_approx
+        if llm_error is not None:
+            details["llm_error"] = llm_error
 
         return MaskingResult(
             agent_id=agent_id,

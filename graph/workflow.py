@@ -156,6 +156,13 @@ def build_privmas_graph(config: Optional[Dict[str, Any]] = None):
             if result.error:
                 errors.append(f"{agent_id}: {result.error}")
 
+            llm_error = (result.details or {}).get("llm_error")
+            if llm_error:
+                s = str(llm_error)
+                if len(s) > 200:
+                    s = s[:200] + "..."
+                errors.append(f"{agent_id}: llm_error: {s}")
+
             return {
                 "specialist_results": specialist_results,
                 "messages": _add_message(state, msg),

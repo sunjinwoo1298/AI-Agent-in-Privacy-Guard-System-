@@ -8,12 +8,12 @@ from src.single_agent import (
     detect_and_mask_pii_llm
 )
 
-def run_single_agent_evaluation():
+def run_single_agent_evaluation(*, data_path: str = "data/sample_data.csv"):
     """
     Runs the single-agent evaluation on a sample dataset.
     """
     try:
-        df = pd.read_csv('data/sample_data.csv')
+        df = pd.read_csv(data_path)
         print("Original Data:")
         print(df['text'])
         
@@ -33,13 +33,14 @@ def run_single_agent_evaluation():
         print(df['llm_masked'])
 
     except FileNotFoundError:
-        print("Error: data/sample_data.csv not found.")
+        print(f"Error: {data_path} not found.")
         print("Please ensure you have created the sample data file.")
 
 
 def run_privmas_evaluation(
     *,
     config_path: str = "config.yaml",
+    data_path: str = "data/sample_data.csv",
     max_rows: Optional[int] = None,
     role_counts: Optional[Dict[str, int]] = None,
 ):
@@ -77,9 +78,9 @@ def run_privmas_evaluation(
             cfg["agents"]["roles"][role]["count"] = int(count)
 
     try:
-        df = pd.read_csv('data/sample_data.csv')
+        df = pd.read_csv(data_path)
     except FileNotFoundError:
-        print("Error: data/sample_data.csv not found.")
+        print(f"Error: {data_path} not found.")
         return
 
     if max_rows is not None:
@@ -154,6 +155,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Agentic_AI: single-agent and PrivMAS runners")
     parser.add_argument("--privmas", action="store_true", help="Run PrivMAS multi-agent workflow")
     parser.add_argument("--config", default="config.yaml", help="Path to PrivMAS config YAML")
+    parser.add_argument(
+        "--data-path",
+        default="data/sample_data.csv",
+        help="Path to CSV with a 'text' column (and optional 'label')",
+    )
     parser.add_argument("--max-rows", type=int, default=None, help="Optional row limit")
     parser.add_argument("--detectors", type=int, default=None, help="Override detector agent count")
     parser.add_argument("--analyzers", type=int, default=None, help="Override analyzer agent count")
@@ -172,10 +178,11 @@ if __name__ == '__main__':
 
         run_privmas_evaluation(
             config_path=args.config,
+            data_path=args.data_path,
             max_rows=args.max_rows,
             role_counts=overrides or None,
         )
     else:
-        run_single_agent_evaluation()
+        run_single_agent_evaluation(data_path=args.data_path)
 
 
