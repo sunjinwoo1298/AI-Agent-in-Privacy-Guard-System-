@@ -147,22 +147,19 @@ class PrivacyMasker:
 
         start = time.perf_counter()
         error: Optional[str] = None
-        llm_error: Optional[str] = None
         masked = text
-
-        llm_usage: Optional[Dict[str, Any]] = None
-        llm_usage_approx: Optional[Dict[str, Any]] = None
+        detected_entities = []
 
         try:
             if chosen == "regex_only":
-                masked = detect_and_mask_pii_regex(text)
+                masked, detected_entities = detect_and_mask_pii_regex(text)
 
             elif chosen == "spacy_plus":
-                masked = detect_and_mask_pii_spacy(text)
+                masked, detected_entities = detect_and_mask_pii_spacy(text)
 
             else:
                 # Defensive fallback (should not happen if types are respected)
-                masked = detect_and_mask_pii_regex(text)
+                masked, detected_entities = detect_and_mask_pii_regex(text)
                 chosen = "regex_only"
 
         except Exception as e:  # pragma: no cover
@@ -183,6 +180,7 @@ class PrivacyMasker:
             strategy=chosen,
             masked_text=masked,
             latency_ms=latency_ms,
+            detected_entities=detected_entities,
             error=error,
             details=details,
         )

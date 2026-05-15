@@ -69,6 +69,7 @@ class MaskingResult(BaseModel):
     strategy: MaskingStrategy
     masked_text: str
     latency_ms: float = 0.0
+    detected_entities: List[Dict[str, Any]] = Field(default_factory=list)
     error: Optional[str] = None
     details: Dict[str, Any] = Field(default_factory=dict)
 
@@ -90,6 +91,7 @@ class PrivMASState(BaseModel):
     # Supervisor aggregation
     final_masked_text: Optional[str] = None
     final_strategy: Optional[MaskingStrategy] = None
+    aggregated_entities: List[Dict[str, Any]] = Field(default_factory=list)
 
     # Coordination overhead
     messages: List[AgentMessage] = Field(default_factory=list)

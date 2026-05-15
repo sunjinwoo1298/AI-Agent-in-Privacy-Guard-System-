@@ -5,69 +5,75 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from typing import List, Dict, Any
+from collections import defaultdict
 
 def generate_report(all_results: List[Dict[str, Any]], output_dir: str):
     """
-    Generates a comprehensive performance report with plots.
+    Generates a comprehensive performance and accuracy report with plots.
 
     Args:
-        all_results: A list of dictionaries, where each dictionary holds the
-                     results from an experiment run (e.g., for a specific agent count).
+        all_results: A list of dictionaries from experiment runs.
         output_dir: The directory to save the report and plots.
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     # --- 1. Prepare DataFrames ---
-    # Main results DataFrame
     summary_df = pd.DataFrame(all_results)
-
-    # Detailed agent-level DataFrame
-    agent_details_list = []
-    for _, row in summary_df.iterrows():
-        num_agents = row['num_agents']
-        if isinstance(row['agent_details'], list):
-            for agent_detail in row['agent_details']:
-                # Ensure agent_detail is a dictionary
-                if isinstance(agent_detail, dict):
-                    agent_details_list.append({
-                        'num_agents': num_agents,
-                        'strategy': agent_detail.get('strategy'),
-                        'latency_ms': agent_detail.get('latency_ms')
-                    })
-    agent_df = pd.DataFrame(agent_details_list)
+    agent_df = pd.DataFrame([
+        {
+            'num_agents': row['num_agents'],
+            'strategy': ad.get('strategy'),
+            'latency_ms': ad.get('latency_ms')
+        }
+        for _, row in summary_df.iterrows() if isinstance(row.get('agent_details'), list)
+        for ad in row['agent_details'] if isinstance(ad, dict)
+    ])
 
     # --- 2. Generate Plots ---
     plot_latency_distribution(agent_df, output_dir)
     plot_performance_scaling(summary_df, output_dir)
     plot_strategy_distribution(agent_df, output_dir)
+    plot_accuracy_scaling(summary_df, output_dir)
 
     # --- 3. Generate Text Report ---
     with open(os.path.join(output_dir, "performance_report.md"), "w") as f:
-        f.write("# PrivMAS Performance Analysis\n\n")
+        f.write("# PrivMAS Performance & Accuracy Analysis\n\n")
         
         f.write("## Overall Performance Summary\n")
-        f.write("This table shows the average performance metrics across all runs for each agent count.\n\n")
-        avg_summary = summary_df.groupby('num_agents')[['e2e_ms', 't_inf_ms', 'delta_sync_ms', 'c_tax_ms']].mean()
-        f.write(avg_summary.to_markdown())
+        f.write("This table shows average performance metrics for each agent count.\n\n")
+        perf_summary = summary_df.groupby('num_agents')[['e2e_ms', 't_inf_ms', 'delta_sync_ms', 'c_tax_ms']].mean()
+        f.write(perf_summary.to_markdown(floatfmt=".2f"))
         f.write("\n\n")
 
-        f.write("## Key Metrics Explained\n")
-        f.write("- **e2e_ms**: End-to-end latency. The total time from start to finish.\n")
-        f.write("- **t_inf_ms (Critical Path)**: The latency of the slowest agent. This is the theoretical minimum time for the parallel portion.\n")
-        f.write("- **delta_sync_ms (Synchronization Delay)**: The time difference between the first and last agent completing their work.\n")
-        f.write("- **c_tax_ms (Coordination Tax)**: The overhead from threading, data sharding, and result aggregation (`e2e_ms - t_inf_ms`).\n\n")
+        f.write("## Overall Accuracy Summary\n")
+        f.write("This table shows average accuracy metrics for each agent count.\n\n")
+        acc_summary = summary_df.groupby('num_agents')[['precision', 'recall', 'f1_score']].mean()
+        f.write(acc_summary.to_markdown(floatfmt=".2f"))
+        f.write("\n\n")
 
-        f.write("## Agent Latency Analysis\n")
-        f.write("The box plot below shows the latency distribution for each agent strategy. This helps to understand the performance characteristics of each masking approach.\n\n")
-        f.write("![Latency Distribution](latency_distribution.png)\n\n")
+        f.write("### Key Metrics Explained\n")
+        f.write("- **e2e_ms**: End-to-end latency.\n")
+        f.write("- **t_inf_ms**: Critical Path (slowest agent).\n")
+        f.write("- **delta_sync_ms**: Synchronization Delay.\n")
+        f.write("- **c_tax_ms**: Coordination Tax (`e2e_ms - t_inf_ms`).\n\n")
 
         f.write("## System Scaling\n")
-        f.write("This plot shows how performance metrics change as we increase the number of agents. Ideally, `e2e_ms` should decrease, but `c_tax_ms` may increase due to higher coordination needs.\n\n")
+        f.write("How performance changes as we add agents.\n\n")
         f.write("![Performance Scaling](performance_scaling.png)\n\n")
-        
-        f.write("## Strategy Distribution\n")
-        f.write("This chart shows the mix of strategies assigned across different agent counts.\n\n")
+
+        f.write("## Accuracy Scaling\n")
+        f.write("How accuracy changes as we add agents.\n\n")
+        f.write("![Accuracy Scaling](accuracy_scaling.png)\n\n")
+
+        f.write("## Per-Label Accuracy Analysis\n")
+        f.write("Average precision, recall, and F1-score for each PII label, grouped by the number of agents.\n\n")
+        f.write(generate_accuracy_tables(summary_df))
+        f.write("\n\n")
+
+        f.write("## Agent Latency & Strategy Analysis\n")
+        f.write("The plots below show the latency distribution for each strategy and the mix of strategies assigned.\n\n")
+        f.write("![Latency Distribution](latency_distribution.png)\n\n")
         f.write("![Strategy Distribution](strategy_distribution.png)\n\n")
 
     print(f"Report generated in {output_dir}")
@@ -94,10 +100,87 @@ def plot_performance_scaling(summary_df: pd.DataFrame, output_dir: str):
 
     plt.figure(figsize=(12, 7))
     
-    # Plotting each metric
     sns.lineplot(x='num_agents', y='e2e_ms', data=summary_df, marker='o', label='Total Latency (e2e_ms)')
     sns.lineplot(x='num_agents', y='t_inf_ms', data=summary_df, marker='o', label='Critical Path (t_inf_ms)')
     sns.lineplot(x='num_agents', y='c_tax_ms', data=summary_df, marker='o', label='Coordination Tax (c_tax_ms)')
+    
+    plt.title('Performance Scaling vs. Number of Agents')
+    plt.xlabel('Number of Agents')
+    plt.ylabel('Time (ms)')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(os.path.join(output_dir, 'performance_scaling.png'))
+    plt.close()
+
+
+def plot_strategy_distribution(agent_df: pd.DataFrame, output_dir: str):
+    """Plots the distribution of strategies used."""
+    if agent_df.empty or 'strategy' not in agent_df.columns:
+        return
+
+    plt.figure(figsize=(10, 6))
+    sns.countplot(x='strategy', data=agent_df, hue='strategy', palette='viridis', legend=False)
+    plt.title('Masking Strategy Distribution')
+    plt.xlabel('Strategy')
+    plt.ylabel('Count')
+    plt.savefig(os.path.join(output_dir, 'strategy_distribution.png'))
+    plt.close()
+
+def plot_accuracy_scaling(summary_df: pd.DataFrame, output_dir: str):
+    """Plots how accuracy metrics scale with the number of agents."""
+    if summary_df.empty or 'f1_score' not in summary_df.columns:
+        return
+
+    plt.figure(figsize=(12, 7))
+    
+    sns.lineplot(x='num_agents', y='precision', data=summary_df, marker='o', label='Precision')
+    sns.lineplot(x='num_agents', y='recall', data=summary_df, marker='o', label='Recall')
+    sns.lineplot(x='num_agents', y='f1_score', data=summary_df, marker='o', label='F1-Score')
+    
+    plt.title('Accuracy Scaling vs. Number of Agents')
+    plt.xlabel('Number of Agents')
+    plt.ylabel('Score')
+    plt.ylim(0, 1.05)
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(os.path.join(output_dir, 'accuracy_scaling.png'))
+    plt.close()
+
+def generate_accuracy_tables(summary_df: pd.DataFrame) -> str:
+    """Generates markdown tables for per-label accuracy."""
+    if 'accuracy_by_label' not in summary_df.columns:
+        return "No per-label accuracy data available.\n"
+
+    all_dfs = []
+    for num_agents, group in summary_df.groupby('num_agents'):
+        label_accuracies = defaultdict(lambda: {'tp': 0, 'fp': 0, 'fn': 0, 'count': 0})
+        
+        for acc_list in group['accuracy_by_label']:
+            for item in acc_list:
+                if isinstance(item, dict):
+                    for label, metrics in item.items():
+                        label_accuracies[label]['tp'] += metrics['tp']
+                        label_accuracies[label]['fp'] += metrics['fp']
+                        label_accuracies[label]['fn'] += metrics['fn']
+                        label_accuracies[label]['count'] += 1
+
+        table_data = []
+        for label, metrics in sorted(label_accuracies.items()):
+            precision = metrics['tp'] / (metrics['tp'] + metrics['fp']) if (metrics['tp'] + metrics['fp']) > 0 else 0
+            recall = metrics['tp'] / (metrics['tp'] + metrics['fn']) if (metrics['tp'] + metrics['fn']) > 0 else 0
+            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+            table_data.append({
+                'Label': label,
+                'Precision': f"{precision:.2f}",
+                'Recall': f"{recall:.2f}",
+                'F1-Score': f"{f1:.2f}",
+            })
+        
+        if table_data:
+            df = pd.DataFrame(table_data)
+            all_dfs.append(f"#### {num_agents} Agent(s)\n" + df.to_markdown(index=False) + "\n")
+
+    return "\n".join(all_dfs)
     
     plt.title('Performance Scaling vs. Number of Agents')
     plt.xlabel('Number of Agents')

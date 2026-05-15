@@ -36,7 +36,7 @@ def generalist_worker(
             chunk_queue.task_done()
 
 
-def run_parallel_privmas(
+def run_in_parallel(
     *,
     text: str,
     label: Optional[str] = None,
@@ -90,6 +90,12 @@ def run_parallel_privmas(
     errors = [r["error"] for r in results if r.get("error")]
     masked_text = "".join([r["masked_text"] for r in results if "masked_text" in r and not r.get("error")])
     
+    # Aggregate detected entities
+    all_detected_entities = []
+    for r in results:
+        if "detected_entities" in r:
+            all_detected_entities.extend(r["detected_entities"])
+
     # 6. Calculate new metrics
     timings_ms = {"e2e_ms": e2e_ms}
     agent_details = []
@@ -122,6 +128,7 @@ def run_parallel_privmas(
         label=label,
         final_masked_text=masked_text,
         final_strategy="parallel_generalist",
+        aggregated_entities=all_detected_entities,
         timings_ms=timings_ms,
         errors=errors,
         # Other fields can be populated if needed

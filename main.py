@@ -1,19 +1,22 @@
 import pandas as pd
 import argparse
-from typing import Any, Dict, Optional
+import json
+from typing import Any, Dict, List, Optional
 
 
 def run_parallel_privmas_evaluation(
     *,
     config_path: str = "config.yaml",
-    data_path: str = "data/sample_data.csv",
+    data_path: str = "data/test_data.json",
     max_rows: Optional[int] = None,
     num_agents: Optional[int] = None,
     quiet: bool = False,
+    test_data: Optional[List[Dict[str, Any]]] = None,
 ):
     """Run the parallel PrivMAS workflow on the sample dataset."""
     from config import load_config
-    from graph.parallel_workflow import run_parallel_privmas
+    from graph.parallel_workflow import run_in_parallel
+    from evaluation.accuracy import evaluate_pii_detection, calculate_overall_metrics
 
     cfg: Dict[str, Any] = load_config(config_path)
 
@@ -21,15 +24,19 @@ def run_parallel_privmas_evaluation(
         cfg.setdefault("agents", {})
         cfg["agents"]["generalist_count"] = int(num_agents)
 
-    try:
-        df = pd.read_csv(data_path)
-    except FileNotFoundError:
-        if not quiet:
-            print("Error: data/sample_data.csv not found.")
-        return pd.DataFrame()
+    if test_data is None:
+        try:
+            with open(data_path, 'r') as f:
+                test_data = json.load(f)
+        except FileNotFoundError:
+            if not quiet:
+                print(f"Error: {data_path} not found.")
+            return pd.DataFrame()
 
     if max_rows is not None:
-        df = df.head(int(max_rows))
+        test_data = test_data[:int(max_rows)]
+
+    df = pd.DataFrame(test_data)
 
     outputs = []
 
@@ -38,13 +45,22 @@ def run_parallel_privmas_evaluation(
     for idx, row in df.iterrows():
         text = str(row.get("text", ""))
         label = row.get("label")
+        ground_truth_entities = row.get("entities", [])
 
-        state = run_parallel_privmas(
+        state = run_in_parallel(
             text=text,
             label=None if label is None else str(label),
             run_id=str(idx),
             config=cfg,
         )
+
+        # Evaluate accuracy
+        accuracy_results = evaluate_pii_detection(
+            predicted_entities=state.aggregated_entities,
+            ground_truth_entities=ground_truth_entities
+        )
+        overall_metrics = calculate_overall_metrics(list(accuracy_results.values()))
+
 
         outputs.append(
             {
@@ -59,6 +75,10 @@ def run_parallel_privmas_evaluation(
                 "c_tax_ms": (state.timings_ms or {}).get("c_tax_ms"),
                 "errors": len(state.errors),
                 "agent_details": state.specialist_results,
+                "precision": overall_metrics["overall_precision"],
+                "recall": overall_metrics["overall_recall"],
+                "f1_score": overall_metrics["overall_f1_score"],
+                "accuracy_by_label": accuracy_results,
             }
         )
         if not quiet:
@@ -75,6 +95,8 @@ def run_parallel_privmas_evaluation(
                     print(f"  - Agent {agent_detail.get('chunk_id')}: {strategy} ({latency:.1f}ms)")
 
             print(state.final_masked_text)
+            print(f"Accuracy: Precision={overall_metrics['overall_precision']:.2f}, Recall={overall_metrics['overall_recall']:.2f}, F1={overall_metrics['overall_f1_score']:.2f}")
+
 
     out_df = pd.DataFrame(outputs)
     if not quiet:
@@ -89,6 +111,9 @@ def run_parallel_privmas_evaluation(
                     "delta_sync_ms",
                     "c_tax_ms",
                     "errors",
+                    "precision",
+                    "recall",
+                    "f1_score",
                 ]
             ]
         )

@@ -8,6 +8,7 @@ import sys
 import os
 import argparse
 import pandas as pd
+import json
 import time
 
 # Add the project root to the Python path to allow importing from main
@@ -22,6 +23,15 @@ def run_experiments(max_agents: int, max_rows: int):
     """
     all_run_details = []
     
+    # Load test data once
+    data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'test_data.json')
+    try:
+        with open(data_path, 'r') as f:
+            test_data = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: Test data not found at {data_path}")
+        return
+
     print(f"Running experiments for 1 to {max_agents} agents...")
     
     for i in range(1, max_agents + 1):
@@ -32,6 +42,7 @@ def run_experiments(max_agents: int, max_rows: int):
             max_rows=max_rows,
             num_agents=i,
             quiet=True,
+            test_data=test_data,
         )
         
         # Add num_agents to each row for detailed analysis
@@ -55,6 +66,9 @@ def run_experiments(max_agents: int, max_rows: int):
         avg_t_inf_ms=('t_inf_ms', 'mean'),
         avg_delta_sync_ms=('delta_sync_ms', 'mean'),
         avg_c_tax_ms=('c_tax_ms', 'mean'),
+        avg_precision=('precision', 'mean'),
+        avg_recall=('recall', 'mean'),
+        avg_f1_score=('f1_score', 'mean'),
         total_runtime_ms=('e2e_ms', 'sum')
     )
 
@@ -73,7 +87,11 @@ def run_experiments(max_agents: int, max_rows: int):
             't_inf_ms': group['t_inf_ms'].mean(),
             'delta_sync_ms': group['delta_sync_ms'].mean(),
             'c_tax_ms': group['c_tax_ms'].mean(),
-            'agent_details': group['agent_details'].tolist()
+            'agent_details': group['agent_details'].tolist(),
+            'precision': group['precision'].mean(),
+            'recall': group['recall'].mean(),
+            'f1_score': group['f1_score'].mean(),
+            'accuracy_by_label': group['accuracy_by_label'].tolist(),
         })
 
     generate_report(report_data, output_dir)
