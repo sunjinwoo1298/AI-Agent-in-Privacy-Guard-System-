@@ -3,7 +3,11 @@ import re
 import spacy
 from spacy.cli import download
 from groq import Groq
-from config import GROQ_API_KEY
+# from config import GROQ_API_KEY
+from dotenv import load_dotenv
+load_dotenv()  
+import os
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # --- LLM-based (Groq) ---
 def detect_and_mask_pii_llm(text):

@@ -1,0 +1,61 @@
+# PrivMAS configuration
+# This file is safe to commit (no secrets). Put secrets in `.env`.
+
+privacy:
+  # One of: regex_only, spacy_plus, hybrid_fast, llm_only, hybrid_llm
+  default_strategy: hybrid_fast
+  llm_fallback_strategy: hybrid_fast
+
+  router:
+    short_text_threshold: 200
+    long_text_threshold: 1200
+    # Keywords that raise sensitivity score (case-insensitive)
+    sensitivity_keywords:
+      - ssn
+      - social security
+      - passport
+      - driver
+      - license
+      - credit card
+      - debit card
+      - cvv
+      - bank
+      - account
+      - routing
+      - iban
+      - swift
+      - dob
+      - date of birth
+      - address
+
+agents:
+  topology: hierarchical
+  roles:
+    detector:
+      count: 1
+      # Default strategy for this role; Supervisor can override
+      strategy: regex_only
+    analyzer:
+      count: 1
+      strategy: spacy_plus
+    validator:
+      count: 1
+      strategy: hybrid_llm
+
+supervisor:
+  use_llm: false
+  # If enabled and GROQ_API_KEY is set, Supervisor can ask an LLM for a JSON plan.
+  model: llama3-70b-8192
+
+aggregation:
+  # One of: prefer_validator, prefer_analyzer, prefer_most_masked, prefer_fastest
+  policy: prefer_validator
+
+llm:
+  provider: groq
+  api_key_env: GROQ_API_KEY
+
+evaluation:
+  track_messages: true
+  # null means use all rows
+  max_rows: null
