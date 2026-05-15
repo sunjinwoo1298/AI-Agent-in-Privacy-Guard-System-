@@ -59,3 +59,10 @@ evaluation:
   track_messages: true
   # null means use all rows
   max_rows: null
+
+generalist:
+    # Strategies to run in sequence for the parallel generalist agent
+    strategies:
+      - regex
+      - spacy
+      - llm

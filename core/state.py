@@ -24,12 +24,10 @@ from pydantic import BaseModel, Field
 MaskingStrategy = Literal[
     "regex_only",
     "spacy_plus",
-    "hybrid_fast",
-    "llm_only",
-    "hybrid_llm",
+    "parallel_generalist",
 ]
 
-RoleName = Literal["detector", "analyzer", "validator", "supervisor"]
+RoleName = Literal["detector", "analyzer", "validator", "supervisor", "generalist"]
 
 
 class AgentMessage(BaseModel):
@@ -86,8 +84,8 @@ class PrivMASState(BaseModel):
     # Planning / routing
     plan: Optional[SupervisorPlan] = None
 
-    # Specialist outputs
-    specialist_results: Dict[str, MaskingResult] = Field(default_factory=dict)
+    # Specialist outputs (can be a dict for sequential or list for parallel)
+    specialist_results: Dict[str, MaskingResult] | List[Dict[str, Any]] = Field(default_factory=dict)
 
     # Supervisor aggregation
     final_masked_text: Optional[str] = None
