@@ -56,17 +56,15 @@ def run_parallel_privmas_evaluation(
 
         # Evaluate accuracy
         accuracy_results = evaluate_pii_detection(
+            text=text,
             predicted_entities=state.aggregated_entities,
             ground_truth_entities=ground_truth_entities
         )
-        overall_metrics = {
-            "overall_precision": accuracy_results["precision"],
-            "overall_recall": accuracy_results["recall"],
-            "overall_f1_score": accuracy_results["f1"],
-            "tp": accuracy_results["tp"],
-            "fp": accuracy_results["fp"],
-            "fn": accuracy_results["fn"],
-        }
+        
+        # Extract metrics for DataFrame
+        strict_metrics = accuracy_results.get("strict", {})
+        overlap_metrics = accuracy_results.get("overlap", {})
+        leakage_rate = accuracy_results.get("leakage_rate", 0.0)
 
 
         outputs.append(
@@ -82,10 +80,25 @@ def run_parallel_privmas_evaluation(
                 "c_tax_ms": (state.timings_ms or {}).get("c_tax_ms"),
                 "errors": len(state.errors),
                 "agent_details": state.specialist_results,
-                "precision": overall_metrics["overall_precision"],
-                "recall": overall_metrics["overall_recall"],
-                "f1_score": overall_metrics["overall_f1_score"],
-                "accuracy_by_label": accuracy_results,
+                
+                # Strict metrics
+                "strict_precision": strict_metrics.get("precision"),
+                "strict_recall": strict_metrics.get("recall"),
+                "strict_f1": strict_metrics.get("f1"),
+                "strict_tp": strict_metrics.get("tp"),
+                "strict_fp": strict_metrics.get("fp"),
+                "strict_fn": strict_metrics.get("fn"),
+
+                # Overlap metrics
+                "overlap_precision": overlap_metrics.get("precision"),
+                "overlap_recall": overlap_metrics.get("recall"),
+                "overlap_f1": overlap_metrics.get("f1"),
+                "overlap_tp": overlap_metrics.get("tp"),
+                "overlap_fp": overlap_metrics.get("fp"),
+                "overlap_fn": overlap_metrics.get("fn"),
+
+                # Leakage
+                "leakage_rate": leakage_rate,
             }
         )
         if not quiet:
@@ -102,7 +115,9 @@ def run_parallel_privmas_evaluation(
                     print(f"  - Agent {agent_detail.get('chunk_id')}: {strategy} ({latency:.1f}ms)")
 
             print(state.final_masked_text)
-            print(f"Accuracy: Precision={overall_metrics['overall_precision']:.2f}, Recall={overall_metrics['overall_recall']:.2f}, F1={overall_metrics['overall_f1_score']:.2f}")
+            print(f"Accuracy (Strict): Precision={strict_metrics.get('precision', 0):.2f}, Recall={strict_metrics.get('recall', 0):.2f}, F1={strict_metrics.get('f1', 0):.2f}")
+            print(f"Accuracy (Overlap): Precision={overlap_metrics.get('precision', 0):.2f}, Recall={overlap_metrics.get('recall', 0):.2f}, F1={overlap_metrics.get('f1', 0):.2f}")
+            print(f"Leakage Rate: {leakage_rate:.2%}")
 
 
     out_df = pd.DataFrame(outputs)
@@ -121,6 +136,19 @@ def run_parallel_privmas_evaluation(
                     "precision",
                     "recall",
                     "f1_score",
+                    "strict_precision",
+                    "strict_recall",
+                    "strict_f1",
+                    "strict_tp",
+                    "strict_fp",
+                    "strict_fn",
+                    "overlap_precision",
+                    "overlap_recall",
+                    "overlap_f1",
+                    "overlap_tp",
+                    "overlap_fp",
+                    "overlap_fn",
+                    "leakage_rate",
                 ]
             ]
         )

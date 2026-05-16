@@ -28,6 +28,12 @@ from config import GROQ_API_KEY
 from core.state import MaskingResult, MaskingStrategy, RoleName
 from evaluation.token_tracking import GroqTokenTracker, approx_token_count
 
+import sys
+import os
+
+# Ensure the project root is in the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from src.masking_functions import (
     detect_and_mask_pii_regex,
     detect_and_mask_pii_spacy,

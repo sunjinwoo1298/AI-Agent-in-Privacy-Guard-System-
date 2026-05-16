@@ -24,7 +24,7 @@ def run_experiments(max_agents: int, max_rows: int):
     all_run_details = []
     
     # Load test data once
-    data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'test_data.json')
+    data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'privmas_dataset_1000.json')
     try:
         with open(data_path, 'r') as f:
             test_data = json.load(f)
@@ -60,20 +60,48 @@ def run_experiments(max_agents: int, max_rows: int):
     # Combine all results into a single DataFrame
     full_results_df = pd.concat(all_run_details, ignore_index=True)
 
-    # Calculate summary for printing
-    summary_table = full_results_df.groupby('num_agents').agg(
+    # --- Correctly calculate overall metrics ---
+    def calculate_metrics_from_counts(df, prefix):
+        total_tp = df[f'{prefix}_tp'].sum()
+        total_fp = df[f'{prefix}_fp'].sum()
+        total_fn = df[f'{prefix}_fn'].sum()
+        
+        precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
+        recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        
+        return pd.Series({
+            f'{prefix}_precision': precision,
+            f'{prefix}_recall': recall,
+            f'{prefix}_f1': f1,
+        })
+
+    # Group by number of agents and apply the correct calculation for both strict and overlap
+    strict_summary = full_results_df.groupby('num_agents').apply(lambda df: calculate_metrics_from_counts(df, 'strict')).reset_index()
+    overlap_summary = full_results_df.groupby('num_agents').apply(lambda df: calculate_metrics_from_counts(df, 'overlap')).reset_index()
+
+    # Also get the timing and leakage summaries
+    other_summary = full_results_df.groupby('num_agents').agg(
         avg_e2e_ms=('e2e_ms', 'mean'),
-        avg_t_inf_ms=('t_inf_ms', 'mean'),
-        avg_delta_sync_ms=('delta_sync_ms', 'mean'),
-        avg_c_tax_ms=('c_tax_ms', 'mean'),
-        avg_precision=('precision', 'mean'),
-        avg_recall=('recall', 'mean'),
-        avg_f1_score=('f1_score', 'mean'),
+        avg_leakage_rate=('leakage_rate', 'mean'),
         total_runtime_ms=('e2e_ms', 'sum')
-    )
+    ).reset_index()
+
+    # Merge the summaries
+    summary_table = pd.merge(other_summary, strict_summary, on='num_agents')
+    summary_table = pd.merge(summary_table, overlap_summary, on='num_agents')
+
 
     print("\n=== Experiment Summary ===")
-    print(summary_table.round(2))
+    # Define columns to display
+    display_cols = [
+        'num_agents', 'avg_e2e_ms', 
+        'strict_f1', 'overlap_f1', 'avg_leakage_rate',
+        'strict_precision', 'strict_recall',
+        'overlap_precision', 'overlap_recall',
+        'total_runtime_ms'
+    ]
+    print(summary_table[display_cols].round(3))
 
     # Generate detailed report with plots
     output_dir = os.path.join(os.path.dirname(__file__), '..', 'results', 'experiment_report')
@@ -81,6 +109,11 @@ def run_experiments(max_agents: int, max_rows: int):
     # We need to structure the data for the report generator
     report_data = []
     for num_agents, group in full_results_df.groupby('num_agents'):
+        # Calculate micro-averaged metrics for the report, focusing on overlap
+        report_precision = group['overlap_tp'].sum() / (group['overlap_tp'].sum() + group['overlap_fp'].sum()) if (group['overlap_tp'].sum() + group['overlap_fp'].sum()) > 0 else 0
+        report_recall = group['overlap_tp'].sum() / (group['overlap_tp'].sum() + group['overlap_fn'].sum()) if (group['overlap_tp'].sum() + group['overlap_fn'].sum()) > 0 else 0
+        report_f1 = 2 * (report_precision * report_recall) / (report_precision + report_recall) if (report_precision + report_recall) > 0 else 0
+
         report_data.append({
             'num_agents': num_agents,
             'e2e_ms': group['e2e_ms'].mean(),
@@ -88,10 +121,12 @@ def run_experiments(max_agents: int, max_rows: int):
             'delta_sync_ms': group['delta_sync_ms'].mean(),
             'c_tax_ms': group['c_tax_ms'].mean(),
             'agent_details': group['agent_details'].tolist(),
-            'precision': group['precision'].mean(),
-            'recall': group['recall'].mean(),
-            'f1_score': group['f1_score'].mean(),
-            'accuracy_by_label': group['accuracy_by_label'].tolist(),
+            'precision': report_precision,
+            'recall': report_recall,
+            'f1_score': report_f1,
+            'leakage_rate': group['leakage_rate'].mean(),
+            # Note: accuracy_by_label is no longer generated in the same way
+            'accuracy_by_label': [], 
         })
 
     generate_report(report_data, output_dir)

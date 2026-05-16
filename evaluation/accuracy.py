@@ -25,11 +25,47 @@ def entity_to_tuple(entity: Dict[str, Any]) -> Tuple[str, int, int]:
         int(entity.get("end", -1)),
     )
 
-def evaluate_pii_detection(predicted_entities: List[Dict[str, Any]], ground_truth_entities: List[Dict[str, Any]]) -> Dict[str, Any]:
+def calculate_iou(span_a: Tuple[int, int], span_b: Tuple[int, int]) -> float:
+    """Calculate the Intersection over Union (IoU) of two spans."""
+    if span_a[0] >= span_b[0] and span_a[1] <= span_b[1]:
+        return 1.0
+    if span_a[0] >= span_b[0] and span_a[1] > span_b[1]:
+        return (span_a[1] - span_b[0]) / (span_b[1] - span_b[0])
+    if span_a[0] < span_b[0] and span_a[1] <= span_b[1]:
+        return (span_a[1] - span_b[0]) / (span_b[1] - span_b[0])
+    if span_a[0] < span_b[0] and span_a[1] > span_b[1]:
+        return 0.0
+    return 0.0
+
+def calculate_leakage_rate(text: str, predicted_entities: List[Dict[str, Any]], ground_truth_entities: List[Dict[str, Any]]) -> float:
+    """Calculate the leakage rate of predicted entities."""
+    if not predicted_entities or not ground_truth_entities:
+        return 0.0
+
+    # Convert to entity sets
+    predicted_set = {entity_to_tuple(e) for e in predicted_entities}
+    ground_truth_set = {entity_to_tuple(e) for e in ground_truth_entities}
+
+    # Calculate the number of true positives
+    tp = len(predicted_set.intersection(ground_truth_set))
+
+    # Calculate the number of false positives
+    fp = len(predicted_set.difference(ground_truth_set))
+
+    # Calculate the number of false negatives
+    fn = len(ground_truth_set.difference(predicted_set))
+
+    # Calculate the leakage rate
+    leakage = fp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+    return leakage
+
+def evaluate_pii_detection(text: str, predicted_entities: List[Dict[str, Any]], ground_truth_entities: List[Dict[str, Any]], iou_threshold: float = 0.5) -> Dict:
     """
     Compares predicted PII entities with ground truth entities and computes metrics.
 
     Args:
+        text: The original text.
         predicted_entities: A list of entities predicted by the model.
         ground_truth_entities: A list of ground truth entities.
 
@@ -44,21 +80,55 @@ def evaluate_pii_detection(predicted_entities: List[Dict[str, Any]], ground_trut
     predicted_set = to_entity_set(predicted_entities)
     ground_truth_set = to_entity_set(ground_truth_entities)
 
-    tp = len(predicted_set.intersection(ground_truth_set))
-    fp = len(predicted_set.difference(ground_truth_set))
-    fn = len(ground_truth_set.difference(predicted_set))
+    # 1. Strict Matching
+    strict_tp = len(predicted_set.intersection(ground_truth_set))
+    strict_fp = len(predicted_set.difference(ground_truth_set))
+    strict_fn = len(ground_truth_set.difference(predicted_set))
 
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+    strict_precision = strict_tp / (strict_tp + strict_fp) if (strict_tp + strict_fp) > 0 else 0.0
+    strict_recall = strict_tp / (strict_tp + strict_fn) if (strict_tp + strict_fn) > 0 else 0.0
+    strict_f1 = 2 * (strict_precision * strict_recall) / (strict_precision + strict_recall) if (strict_precision + strict_recall) > 0 else 0.0
+
+    # 2. Overlap Matching
+    overlap_tp = 0
+    overlap_fp = 0
+    overlap_fn = 0
+
+    for pred_entity in predicted_entities:
+        pred_label = pred_entity.get("label", pred_entity.get("entity_type", ""))
+        pred_start, pred_end = pred_entity.get("start", -1), pred_entity.get("end", -1)
+
+        for true_entity in ground_truth_entities:
+            true_label = true_entity.get("label", true_entity.get("entity_type", ""))
+            true_start, true_end = true_entity.get("start", -1), true_entity.get("end", -1)
+
+            if pred_label == true_label:
+                iou = calculate_iou((pred_start, pred_end), (true_start, true_end))
+                if iou > 0:
+                    overlap_tp += 1
+            else:
+                overlap_fp += 1
+
+    overlap_fp += len(predicted_entities)
+    overlap_fn += len(ground_truth_entities)
+
+    overlap_precision = overlap_tp / (overlap_tp + overlap_fp) if (overlap_tp + overlap_fp) > 0 else 0.0
+    overlap_recall = overlap_tp / (overlap_tp + overlap_fn) if (overlap_tp + overlap_fn) > 0 else 0.0
+    overlap_f1 = 2 * (overlap_precision * overlap_recall) / (overlap_precision + overlap_recall) if (overlap_precision + overlap_recall) > 0 else 0.0
+
+    # 3. Leakage Rate
+    leakage = calculate_leakage_rate(text, predicted_entities, ground_truth_entities)
 
     return {
-        "tp": tp,
-        "fp": fp,
-        "fn": fn,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1
+        "strict": {
+            "tp": strict_tp, "fp": strict_fp, "fn": strict_fn,
+            "precision": strict_precision, "recall": strict_recall, "f1": strict_f1
+        },
+        "overlap": {
+            "tp": overlap_tp, "fp": overlap_fp, "fn": overlap_fn,
+            "precision": overlap_precision, "recall": overlap_recall, "f1": overlap_f1
+        },
+        "leakage_rate": leakage
     }
 
 def calculate_overall_metrics(all_results: List[Dict[str, Any]]) -> Dict[str, Any]:
