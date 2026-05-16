@@ -17,7 +17,7 @@ counts/topologies. The state captures:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -86,7 +86,7 @@ class PrivMASState(BaseModel):
     plan: Optional[SupervisorPlan] = None
 
     # Specialist outputs (can be a dict for sequential or list for parallel)
-    specialist_results: Dict[str, MaskingResult] | List[Dict[str, Any]] = Field(default_factory=dict)
+    specialist_results: Union[Dict[str, MaskingResult], List[Dict[str, Any]]] = Field(default_factory=dict)
 
     # Supervisor aggregation
     final_masked_text: Optional[str] = None

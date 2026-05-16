@@ -156,13 +156,47 @@ def generate_accuracy_tables(summary_df: pd.DataFrame) -> str:
         label_accuracies = defaultdict(lambda: {'tp': 0, 'fp': 0, 'fn': 0, 'count': 0})
         
         for acc_list in group['accuracy_by_label']:
-            for item in acc_list:
-                if isinstance(item, dict):
-                    for label, metrics in item.items():
-                        label_accuracies[label]['tp'] += metrics['tp']
-                        label_accuracies[label]['fp'] += metrics['fp']
-                        label_accuracies[label]['fn'] += metrics['fn']
+            if isinstance(acc_list, dict):
+                per_label = acc_list.get('per_label')
+                if isinstance(per_label, dict):
+                    for label, metrics in per_label.items():
+                        if not isinstance(metrics, dict):
+                            continue
+                        label_accuracies[label]['tp'] += int(metrics.get('tp', 0))
+                        label_accuracies[label]['fp'] += int(metrics.get('fp', 0))
+                        label_accuracies[label]['fn'] += int(metrics.get('fn', 0))
                         label_accuracies[label]['count'] += 1
+                else:
+                    for label, metrics in acc_list.items():
+                        if not isinstance(metrics, dict):
+                            continue
+                        if {'tp', 'fp', 'fn'}.issubset(metrics.keys()):
+                            label_accuracies[label]['tp'] += int(metrics.get('tp', 0))
+                            label_accuracies[label]['fp'] += int(metrics.get('fp', 0))
+                            label_accuracies[label]['fn'] += int(metrics.get('fn', 0))
+                            label_accuracies[label]['count'] += 1
+            elif isinstance(acc_list, list):
+                for item in acc_list:
+                    if not isinstance(item, dict):
+                        continue
+                    per_label = item.get('per_label')
+                    if isinstance(per_label, dict):
+                        for label, metrics in per_label.items():
+                            if not isinstance(metrics, dict):
+                                continue
+                            label_accuracies[label]['tp'] += int(metrics.get('tp', 0))
+                            label_accuracies[label]['fp'] += int(metrics.get('fp', 0))
+                            label_accuracies[label]['fn'] += int(metrics.get('fn', 0))
+                            label_accuracies[label]['count'] += 1
+                    else:
+                        for label, metrics in item.items():
+                            if not isinstance(metrics, dict):
+                                continue
+                            if {'tp', 'fp', 'fn'}.issubset(metrics.keys()):
+                                label_accuracies[label]['tp'] += int(metrics.get('tp', 0))
+                                label_accuracies[label]['fp'] += int(metrics.get('fp', 0))
+                                label_accuracies[label]['fn'] += int(metrics.get('fn', 0))
+                                label_accuracies[label]['count'] += 1
 
         table_data = []
         for label, metrics in sorted(label_accuracies.items()):

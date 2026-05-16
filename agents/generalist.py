@@ -35,4 +35,5 @@ class GeneralistAgent:
             "latency_ms": result.latency_ms,
             "error": result.error,
             "strategy": self.strategy, # Include strategy in result
+            "detected_entities": result.detected_entities,
         }

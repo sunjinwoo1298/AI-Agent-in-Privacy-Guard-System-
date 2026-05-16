@@ -19,7 +19,7 @@ Notes
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 import os
 
 import yaml
@@ -49,7 +49,7 @@ def _safe_read_yaml(path: Path) -> Dict[str, Any]:
         return {}
 
 
-def load_config(config_path: Optional[str | os.PathLike[str]] = None) -> Dict[str, Any]:
+def load_config(config_path: Optional[Union[str, os.PathLike[str]]] = None) -> Dict[str, Any]:
     """Load the project configuration.
 
     Precedence:

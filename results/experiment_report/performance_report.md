@@ -1,34 +1,52 @@
-# PrivMAS Performance Analysis
+# PrivMAS Performance & Accuracy Analysis
 
 ## Overall Performance Summary
-This table shows the average performance metrics across all runs for each agent count.
+This table shows average performance metrics for each agent count.
 
-|   num_agents |    e2e_ms |   t_inf_ms |   delta_sync_ms |   c_tax_ms |
-|-------------:|----------:|-----------:|----------------:|-----------:|
-|            1 |  0.696183 |  0.0140079 |          0      |   0.682175 |
-|            2 | 13.4625   | 12.6389    |         12.7141 |   0.823613 |
-|            3 | 15.2611   | 14.0494    |         14.1729 |   1.21162  |
-|            4 | 23.0192   | 20.9902    |         22.0909 |   2.02892  |
-|            5 | 20.8486   | 19.1339    |         20.0141 |   1.71473  |
+|   num_agents |   e2e_ms |   t_inf_ms |   delta_sync_ms |   c_tax_ms |
+|-------------:|---------:|-----------:|----------------:|-----------:|
+|            1 |     0.52 |       0.06 |            0.00 |       0.46 |
+|            2 |     7.06 |       6.31 |            6.36 |       0.76 |
+|            3 |     7.61 |       6.85 |            6.91 |       0.76 |
+|            4 |    11.82 |      10.32 |           11.20 |       1.49 |
+|            5 |    12.42 |      10.85 |           11.77 |       1.58 |
 
-## Key Metrics Explained
-- **e2e_ms**: End-to-end latency. The total time from start to finish.
-- **t_inf_ms (Critical Path)**: The latency of the slowest agent. This is the theoretical minimum time for the parallel portion.
-- **delta_sync_ms (Synchronization Delay)**: The time difference between the first and last agent completing their work.
-- **c_tax_ms (Coordination Tax)**: The overhead from threading, data sharding, and result aggregation (`e2e_ms - t_inf_ms`).
+## Overall Accuracy Summary
+This table shows average accuracy metrics for each agent count.
 
-## Agent Latency Analysis
-The box plot below shows the latency distribution for each agent strategy. This helps to understand the performance characteristics of each masking approach.
+|   num_agents |   precision |   recall |   f1_score |
+|-------------:|------------:|---------:|-----------:|
+|            1 |        0.22 |     0.19 |       0.20 |
+|            2 |        0.08 |     0.06 |       0.06 |
+|            3 |        0.01 |     0.02 |       0.02 |
+|            4 |        0.04 |     0.02 |       0.03 |
+|            5 |        0.02 |     0.02 |       0.02 |
 
-![Latency Distribution](latency_distribution.png)
+### Key Metrics Explained
+- **e2e_ms**: End-to-end latency.
+- **t_inf_ms**: Critical Path (slowest agent).
+- **delta_sync_ms**: Synchronization Delay.
+- **c_tax_ms**: Coordination Tax (`e2e_ms - t_inf_ms`).
 
 ## System Scaling
-This plot shows how performance metrics change as we increase the number of agents. Ideally, `e2e_ms` should decrease, but `c_tax_ms` may increase due to higher coordination needs.
+How performance changes as we add agents.
 
 ![Performance Scaling](performance_scaling.png)
 
-## Strategy Distribution
-This chart shows the mix of strategies assigned across different agent counts.
+## Accuracy Scaling
+How accuracy changes as we add agents.
+
+![Accuracy Scaling](accuracy_scaling.png)
+
+## Per-Label Accuracy Analysis
+Average precision, recall, and F1-score for each PII label, grouped by the number of agents.
+
+
+
+## Agent Latency & Strategy Analysis
+The plots below show the latency distribution for each strategy and the mix of strategies assigned.
+
+![Latency Distribution](latency_distribution.png)
 
 ![Strategy Distribution](strategy_distribution.png)
 

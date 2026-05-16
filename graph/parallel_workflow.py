@@ -10,6 +10,25 @@ from agents.strategy_assigner import assign_strategies
 from core.state import PrivMASState, MaskingStrategy
 from utils.sharding import shard_text
 
+
+def _normalize_entity(entity: Dict[str, Any], chunk_offset: int) -> Dict[str, Any]:
+    """Convert chunk-local entity offsets into global text offsets."""
+
+    label = entity.get("label", entity.get("entity_type", ""))
+    start = entity.get("start")
+    end = entity.get("end")
+
+    normalized = dict(entity)
+    normalized["label"] = label
+
+    if isinstance(start, int):
+        normalized["start"] = start + chunk_offset
+    if isinstance(end, int):
+        normalized["end"] = end + chunk_offset
+
+    return normalized
+
+
 def generalist_worker(
     chunk_queue: queue.Queue,
     result_queue: queue.Queue,
@@ -18,7 +37,7 @@ def generalist_worker(
     """Worker function for each thread."""
     while not chunk_queue.empty():
         try:
-            chunk_id, chunk_text, strategy = chunk_queue.get_nowait()
+            chunk_id, chunk_text, chunk_offset, strategy = chunk_queue.get_nowait()
             # Each agent is created per task in this model, which is less efficient
             # but ensures statelessness if the agent design requires it.
             # For a more optimized approach, a pool of pre-initialized agents
@@ -26,12 +45,13 @@ def generalist_worker(
             agent = GeneralistAgent(config, assigned_strategy=strategy)
             result = agent.process_chunk(chunk_text, chunk_id)
             result["arrival_time"] = time.perf_counter() # Record arrival time
+            result["chunk_offset"] = chunk_offset
             result_queue.put(result)
             chunk_queue.task_done()
         except queue.Empty:
             break
         except Exception as e:
-            result = {"chunk_id": -1, "error": str(e), "arrival_time": time.perf_counter()}
+            result = {"chunk_id": -1, "error": str(e), "arrival_time": time.perf_counter(), "chunk_offset": 0}
             result_queue.put(result)
             chunk_queue.task_done()
 
@@ -56,8 +76,10 @@ def run_in_parallel(
     strategies = assign_strategies(num_agents)
     
     chunk_queue = queue.Queue()
+    chunk_offset = 0
     for i, (shard, strategy) in enumerate(zip(shards, strategies)):
-        chunk_queue.put((i, shard, strategy))
+        chunk_queue.put((i, shard, chunk_offset, strategy))
+        chunk_offset += len(shard)
         
     result_queue = queue.Queue()
     threads = []
@@ -94,7 +116,10 @@ def run_in_parallel(
     all_detected_entities = []
     for r in results:
         if "detected_entities" in r:
-            all_detected_entities.extend(r["detected_entities"])
+            chunk_offset = int(r.get("chunk_offset", 0))
+            for entity in r["detected_entities"]:
+                if isinstance(entity, dict):
+                    all_detected_entities.append(_normalize_entity(entity, chunk_offset))
 
     # 6. Calculate new metrics
     timings_ms = {"e2e_ms": e2e_ms}

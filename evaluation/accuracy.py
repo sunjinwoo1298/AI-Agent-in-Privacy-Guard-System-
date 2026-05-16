@@ -3,6 +3,28 @@
 from collections import defaultdict
 from typing import List, Dict, Any, Set, Tuple
 
+
+LABEL_ALIASES = {
+    "PERSON": "NAME",
+    "GPE": "ADDRESS",
+    "LOC": "ADDRESS",
+    "ORG": "ORG",
+}
+
+
+def normalize_label(label: Any) -> str:
+    if label is None:
+        return ""
+    return LABEL_ALIASES.get(str(label).upper(), str(label).upper())
+
+
+def entity_to_tuple(entity: Dict[str, Any]) -> Tuple[str, int, int]:
+    return (
+        normalize_label(entity.get("label", entity.get("entity_type", ""))),
+        int(entity.get("start", -1)),
+        int(entity.get("end", -1)),
+    )
+
 def evaluate_pii_detection(predicted_entities: List[Dict[str, Any]], ground_truth_entities: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Compares predicted PII entities with ground truth entities and computes metrics.
@@ -16,8 +38,8 @@ def evaluate_pii_detection(predicted_entities: List[Dict[str, Any]], ground_trut
     """
     
     def to_entity_set(entities: List[Dict[str, Any]]) -> Set[Tuple[str, int, int]]:
-        """Converts a list of entity dicts to a set of tuples for easy comparison."""
-        return {(e['label'], e['start'], e['end']) for e in entities}
+        """Converts a list of entity dicts to a set of normalized tuples."""
+        return {entity_to_tuple(e) for e in entities}
 
     predicted_set = to_entity_set(predicted_entities)
     ground_truth_set = to_entity_set(ground_truth_entities)
@@ -49,11 +71,19 @@ def calculate_overall_metrics(all_results: List[Dict[str, Any]]) -> Dict[str, An
     per_label_stats = defaultdict(lambda: {"tp": 0, "fp": 0, "fn": 0})
 
     for result in all_results:
+        if not isinstance(result, dict):
+            continue
+
         pred_entities = result.get('predicted_entities', [])
         true_entities = result.get('ground_truth_entities', [])
 
-        pred_set = {(e['label'], e['start'], e['end']) for e in pred_entities}
-        true_set = {(e['label'], e['start'], e['end']) for e in true_entities}
+        if not isinstance(pred_entities, list):
+            pred_entities = []
+        if not isinstance(true_entities, list):
+            true_entities = []
+
+        pred_set = {entity_to_tuple(e) for e in pred_entities}
+        true_set = {entity_to_tuple(e) for e in true_entities}
 
         # Overall stats
         total_tp += len(pred_set.intersection(true_set))

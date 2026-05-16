@@ -16,7 +16,7 @@ def run_parallel_privmas_evaluation(
     """Run the parallel PrivMAS workflow on the sample dataset."""
     from config import load_config
     from graph.parallel_workflow import run_in_parallel
-    from evaluation.accuracy import evaluate_pii_detection, calculate_overall_metrics
+    from evaluation.accuracy import evaluate_pii_detection
 
     cfg: Dict[str, Any] = load_config(config_path)
 
@@ -59,7 +59,14 @@ def run_parallel_privmas_evaluation(
             predicted_entities=state.aggregated_entities,
             ground_truth_entities=ground_truth_entities
         )
-        overall_metrics = calculate_overall_metrics(list(accuracy_results.values()))
+        overall_metrics = {
+            "overall_precision": accuracy_results["precision"],
+            "overall_recall": accuracy_results["recall"],
+            "overall_f1_score": accuracy_results["f1"],
+            "tp": accuracy_results["tp"],
+            "fp": accuracy_results["fp"],
+            "fn": accuracy_results["fn"],
+        }
 
 
         outputs.append(
