@@ -83,9 +83,11 @@ def run_experiments(max_agents: int, max_rows: int):
     # Also get the timing and leakage summaries
     other_summary = full_results_df.groupby('num_agents').agg(
         avg_e2e_ms=('e2e_ms', 'mean'),
-        avg_leakage_rate=('leakage_rate', 'mean'),
+        avg_strict_leakage_rate=('strict_leakage_rate', 'mean'),
+        avg_overlap_leakage_rate=('overlap_leakage_rate', 'mean'),
         total_runtime_ms=('e2e_ms', 'sum')
     ).reset_index()
+    other_summary['avg_leakage_rate'] = other_summary['avg_overlap_leakage_rate']
 
     # Merge the summaries
     summary_table = pd.merge(other_summary, strict_summary, on='num_agents')
@@ -97,6 +99,7 @@ def run_experiments(max_agents: int, max_rows: int):
     display_cols = [
         'num_agents', 'avg_e2e_ms', 
         'strict_f1', 'overlap_f1', 'avg_leakage_rate',
+        'avg_strict_leakage_rate', 'avg_overlap_leakage_rate',
         'strict_precision', 'strict_recall',
         'overlap_precision', 'overlap_recall',
         'total_runtime_ms'
@@ -124,7 +127,9 @@ def run_experiments(max_agents: int, max_rows: int):
             'precision': report_precision,
             'recall': report_recall,
             'f1_score': report_f1,
-            'leakage_rate': group['leakage_rate'].mean(),
+            'strict_leakage_rate': group['strict_leakage_rate'].mean(),
+            'overlap_leakage_rate': group['overlap_leakage_rate'].mean(),
+            'leakage_rate': group['overlap_leakage_rate'].mean(),
             # Note: accuracy_by_label is no longer generated in the same way
             'accuracy_by_label': [], 
         })

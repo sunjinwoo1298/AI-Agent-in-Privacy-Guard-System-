@@ -37,28 +37,10 @@ def calculate_iou(span_a: Tuple[int, int], span_b: Tuple[int, int]) -> float:
         return 0.0
     return 0.0
 
-def calculate_leakage_rate(text: str, predicted_entities: List[Dict[str, Any]], ground_truth_entities: List[Dict[str, Any]]) -> float:
-    """Calculate the leakage rate of predicted entities."""
-    if not predicted_entities or not ground_truth_entities:
-        return 0.0
-
-    # Convert to entity sets
-    predicted_set = {entity_to_tuple(e) for e in predicted_entities}
-    ground_truth_set = {entity_to_tuple(e) for e in ground_truth_entities}
-
-    # Calculate the number of true positives
-    tp = len(predicted_set.intersection(ground_truth_set))
-
-    # Calculate the number of false positives
-    fp = len(predicted_set.difference(ground_truth_set))
-
-    # Calculate the number of false negatives
-    fn = len(ground_truth_set.difference(predicted_set))
-
-    # Calculate the leakage rate
-    leakage = fp / (tp + fn) if (tp + fn) > 0 else 0.0
-
-    return leakage
+def calculate_leakage_rate(tp: int, fn: int) -> float:
+    """Calculate privacy leakage as the fraction of ground-truth PII left unmasked."""
+    total_ground_truth = tp + fn
+    return fn / total_ground_truth if total_ground_truth > 0 else 0.0
 
 def evaluate_pii_detection(text: str, predicted_entities: List[Dict[str, Any]], ground_truth_entities: List[Dict[str, Any]], iou_threshold: float = 0.5) -> Dict:
     """
@@ -117,18 +99,24 @@ def evaluate_pii_detection(text: str, predicted_entities: List[Dict[str, Any]], 
     overlap_f1 = 2 * (overlap_precision * overlap_recall) / (overlap_precision + overlap_recall) if (overlap_precision + overlap_recall) > 0 else 0.0
 
     # 3. Leakage Rate
-    leakage = calculate_leakage_rate(text, predicted_entities, ground_truth_entities)
+    strict_leakage = calculate_leakage_rate(strict_tp, strict_fn)
+    overlap_leakage = calculate_leakage_rate(overlap_tp, overlap_fn)
 
     return {
         "strict": {
             "tp": strict_tp, "fp": strict_fp, "fn": strict_fn,
-            "precision": strict_precision, "recall": strict_recall, "f1": strict_f1
+            "precision": strict_precision, "recall": strict_recall, "f1": strict_f1,
+            "leakage_rate": strict_leakage,
         },
         "overlap": {
             "tp": overlap_tp, "fp": overlap_fp, "fn": overlap_fn,
-            "precision": overlap_precision, "recall": overlap_recall, "f1": overlap_f1
+            "precision": overlap_precision, "recall": overlap_recall, "f1": overlap_f1,
+            "leakage_rate": overlap_leakage,
         },
-        "leakage_rate": leakage
+        "strict_leakage_rate": strict_leakage,
+        "overlap_leakage_rate": overlap_leakage,
+        # Backward-compatible alias used by some summaries.
+        "leakage_rate": overlap_leakage,
     }
 
 def calculate_overall_metrics(all_results: List[Dict[str, Any]]) -> Dict[str, Any]:

@@ -64,7 +64,8 @@ def run_parallel_privmas_evaluation(
         # Extract metrics for DataFrame
         strict_metrics = accuracy_results.get("strict", {})
         overlap_metrics = accuracy_results.get("overlap", {})
-        leakage_rate = accuracy_results.get("leakage_rate", 0.0)
+        strict_leakage_rate = accuracy_results.get("strict_leakage_rate", strict_metrics.get("leakage_rate", 0.0))
+        overlap_leakage_rate = accuracy_results.get("overlap_leakage_rate", overlap_metrics.get("leakage_rate", 0.0))
 
 
         outputs.append(
@@ -98,7 +99,9 @@ def run_parallel_privmas_evaluation(
                 "overlap_fn": overlap_metrics.get("fn"),
 
                 # Leakage
-                "leakage_rate": leakage_rate,
+                "strict_leakage_rate": strict_leakage_rate,
+                "overlap_leakage_rate": overlap_leakage_rate,
+                "leakage_rate": overlap_leakage_rate,
             }
         )
         if not quiet:
@@ -117,7 +120,8 @@ def run_parallel_privmas_evaluation(
             print(state.final_masked_text)
             print(f"Accuracy (Strict): Precision={strict_metrics.get('precision', 0):.2f}, Recall={strict_metrics.get('recall', 0):.2f}, F1={strict_metrics.get('f1', 0):.2f}")
             print(f"Accuracy (Overlap): Precision={overlap_metrics.get('precision', 0):.2f}, Recall={overlap_metrics.get('recall', 0):.2f}, F1={overlap_metrics.get('f1', 0):.2f}")
-            print(f"Leakage Rate: {leakage_rate:.2%}")
+            print(f"Leakage (Strict): {strict_leakage_rate:.2%}")
+            print(f"Leakage (Overlap): {overlap_leakage_rate:.2%}")
 
 
     out_df = pd.DataFrame(outputs)
@@ -148,6 +152,8 @@ def run_parallel_privmas_evaluation(
                     "overlap_tp",
                     "overlap_fp",
                     "overlap_fn",
+                    "strict_leakage_rate",
+                    "overlap_leakage_rate",
                     "leakage_rate",
                 ]
             ]

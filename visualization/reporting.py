@@ -52,11 +52,22 @@ def generate_report(all_results: List[Dict[str, Any]], output_dir: str):
         f.write(acc_summary.to_markdown(floatfmt=".2f"))
         f.write("\n\n")
 
+        leakage_cols = [c for c in ['strict_leakage_rate', 'overlap_leakage_rate', 'leakage_rate'] if c in summary_df.columns]
+        if leakage_cols:
+            f.write("## Leakage Summary\n")
+            f.write("Leakage is reported separately for strict and overlap matching.\n\n")
+            leakage_summary = summary_df.groupby('num_agents')[leakage_cols].mean()
+            f.write(leakage_summary.to_markdown(floatfmt=".2f"))
+            f.write("\n\n")
+
         f.write("### Key Metrics Explained\n")
         f.write("- **e2e_ms**: End-to-end latency.\n")
         f.write("- **t_inf_ms**: Critical Path (slowest agent).\n")
         f.write("- **delta_sync_ms**: Synchronization Delay.\n")
         f.write("- **c_tax_ms**: Coordination Tax (`e2e_ms - t_inf_ms`).\n\n")
+        if leakage_cols:
+            f.write("- **strict_leakage_rate**: Fraction of ground-truth PII missed under strict matching.\n")
+            f.write("- **overlap_leakage_rate**: Fraction of ground-truth PII missed under overlap matching.\n\n")
 
         f.write("## System Scaling\n")
         f.write("How performance changes as we add agents.\n\n")
