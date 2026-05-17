@@ -8,8 +8,7 @@ def assign_strategies(num_agents: int) -> List[MaskingStrategy]:
     Assigns masking strategies to a given number of agents based on a heuristic.
 
     Heuristic:
-    1. Prioritize at least one of each type: regex, spacy.
-    2. Distribute remaining agents evenly, starting with cheaper methods.
+    1. Use the shared GLiNER-PII strategy for every agent.
 
     Args:
         num_agents: The total number of agents.
@@ -22,12 +21,7 @@ def assign_strategies(num_agents: int) -> List[MaskingStrategy]:
     if num_agents == 0:
         return []
 
-    # Base strategies to ensure variety
-    base_strategies: List[MaskingStrategy] = ["regex_only", "spacy_plus"]
+    for _ in range(num_agents):
+        strategies.append("gliner_pii")
 
-    # Assign strategies
-    for i in range(num_agents):
-        strategy = base_strategies[i % len(base_strategies)]
-        strategies.append(strategy)
-            
     return strategies

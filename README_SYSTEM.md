@@ -34,7 +34,7 @@ Core scripts and modules (important paths):
 
 - Dataset generation is seeded (default `seed: 42` in YAML configs) so the same synthetic examples are produced between runs.
 - Sentence splitting and sharding are deterministic (sentence order and the `sentence_index % n_agents` mapping are fixed).
-- Agent logic is deterministic: regex detectors and a `two-word capitalized` heuristic for `NAME` ensure stable behavior across runs. When using spaCy, model loading can be toggled with `use_spacy` but model behavior remains deterministic for the same inputs.
+- Agent logic is deterministic: the GLiNER PII backend and a `two-word capitalized` heuristic for `NAME` ensure stable behavior across runs. The legacy `use_spacy` flag still controls whether the shared GLiNER backend is loaded, but no spaCy model is used for masking.
 
 To fully reproduce an experiment, set the `seed` field in the YAML config under `experiments/` and use the provided config file (e.g. `experiments/config_heavy_process.yaml`).
 
@@ -63,7 +63,7 @@ Typical fields in `experiments/config_*.yaml`:
 - `runs_per_n`: number of repetitions per `n`.
 - `dataset`: preset (small/medium/large), `sample_count`, `tokens_per_sample`, `entity_density`.
 - `iou_threshold`: IoU threshold for matching spans.
-- `use_spacy`: bool — whether agents will use spaCy for `NAME` detection.
+- `use_spacy`: bool — whether agents will load the shared GLiNER PII backend.
 - `use_process_pool`: bool — backend choice.
 - `seed`: RNG seed to make dataset and sharding deterministic.
 - `results_csv`: path to append raw per-run rows.
@@ -107,8 +107,8 @@ python -c "import visualization.plots as vp; vp.compare_all('results/summary_hea
 python visualization/generate_report.py
 ```
 
-Notes:
-- For `use_spacy: true` you must install the model: `pip install spacy && python -m spacy download en_core_web_sm`.
+ Notes:
+- For `use_spacy: true` the project loads the shared GLiNER PII backend automatically (`nvidia/gliner-pii`).
 - ProcessPool runs incur per-process startup and data marshalling costs; for fair comparisons warm-start processes or increase per-agent workload (tokens/sample) so compute dominates coordination.
 
 ---

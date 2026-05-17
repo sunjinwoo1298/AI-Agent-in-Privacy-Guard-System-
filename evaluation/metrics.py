@@ -2,7 +2,6 @@
 
 These metrics are designed for *ablation studies* where you vary:
 - number of specialists per role (detector/analyzer/validator)
-- routing strategies (regex/spaCy/LLM/hybrids)
 - aggregation policy
 
 We focus on measurements you can compute reliably from the current code:
@@ -19,16 +18,10 @@ So we provide an *approximate* token estimator for comparability.
 
 from __future__ import annotations
 
-import re
 from typing import Any, Dict
 
 from core.state import PrivMASState
 from evaluation.token_tracking import sum_usage
-
-
-_EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
-_PHONE_REGEX = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
-_PLACEHOLDER_REGEX = re.compile(r"\[[A-Z_]+\]")
 
 
 def approx_token_count(text: str) -> int:
@@ -38,23 +31,80 @@ def approx_token_count(text: str) -> int:
     across agent counts / strategies.
     """
 
-    # Split into words + punctuation as a cheap approximation.
-    parts = re.findall(r"\w+|[^\w\s]", text)
-    return len(parts)
+    count = 0
+    current = []
+
+    for char in text:
+        if char.isalnum() or char == "_":
+            current.append(char)
+            continue
+
+        if current:
+            count += 1
+            current = []
+
+        if not char.isspace():
+            count += 1
+
+    if current:
+        count += 1
+
+    return count
+
+
+def _normalise_tokens(text: str) -> list[str]:
+    tokens = []
+    for raw in text.split():
+        token = raw.strip(".,;:!?()[]{}<>\"'")
+        if token:
+            tokens.append(token)
+    return tokens
+
+
+def _looks_like_email(token: str) -> bool:
+    if token.count("@") != 1:
+        return False
+    local, domain = token.split("@", 1)
+    return bool(local and domain and "." in domain and " " not in token)
+
+
+def _looks_like_phone(token: str) -> bool:
+    digits = [ch for ch in token if ch.isdigit()]
+    if len(digits) < 10 or len(digits) > 15:
+        return False
+    return any(ch in token for ch in "-. ()") or token.isdigit()
+
+
+def _count_placeholders(text: str) -> int:
+    count = 0
+    idx = 0
+    while True:
+        start = text.find("[", idx)
+        if start == -1:
+            break
+        end = text.find("]", start + 1)
+        if end == -1:
+            break
+        token = text[start + 1 : end]
+        if token and all(ch.isupper() or ch == "_" for ch in token):
+            count += 1
+        idx = end + 1
+    return count
 
 
 def privacy_audit(masked_text: str) -> Dict[str, Any]:
     """Heuristic audit: checks for obvious residual PII patterns."""
 
-    emails_left = _EMAIL_REGEX.findall(masked_text)
-    phones_left = _PHONE_REGEX.findall(masked_text)
+    tokens = _normalise_tokens(masked_text)
+    emails_left = [token for token in tokens if _looks_like_email(token)]
+    phones_left = [token for token in tokens if _looks_like_phone(token)]
 
     return {
         "residual_email_count": len(emails_left),
         "residual_phone_count": len(phones_left),
         "residual_emails": emails_left[:3],
         "residual_phones": phones_left[:3],
-        "placeholder_count": len(_PLACEHOLDER_REGEX.findall(masked_text)),
+        "placeholder_count": _count_placeholders(masked_text),
     }
 
 

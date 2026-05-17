@@ -1,14 +1,53 @@
 """Accuracy evaluation metrics for PII detection."""
 
 from collections import defaultdict
-from typing import List, Dict, Any, Set, Tuple
+from typing import List, Dict, Any, Set, Tuple, Optional
 
 
 LABEL_ALIASES = {
+    "NAME": "NAME",
+    "PER": "NAME",
     "PERSON": "NAME",
+    "ORG": "ORG",
+    "ORGANIZATION": "ORG",
     "GPE": "ADDRESS",
     "LOC": "ADDRESS",
-    "ORG": "ORG",
+    "ADDRESS": "ADDRESS",
+    "LOCATION": "ADDRESS",
+    "EMAIL_ADDRESS": "EMAIL",
+    "EMAIL": "EMAIL",
+    "PHONE": "PHONE",
+    "PHONE_NUMBER": "PHONE",
+    "MOBILE_PHONE_NUMBER": "PHONE",
+    "LANDLINE_PHONE_NUMBER": "PHONE",
+    "FAX_NUMBER": "PHONE",
+    "BANK_ACCOUNT": "BANK_ACCOUNT",
+    "BANK_ACCOUNT_NUMBER": "BANK_ACCOUNT",
+    "IBAN": "BANK_ACCOUNT",
+    "SWIFT": "BANK_ACCOUNT",
+    "CREDIT_CARD": "CREDIT_CARD",
+    "CREDIT_CARD_NUMBER": "CREDIT_CARD",
+    "SOCIAL_SECURITY_NUMBER": "SSN",
+    "SSN": "SSN",
+    "PASSPORT": "PASSPORT",
+    "PASSPORT_NUMBER": "PASSPORT",
+    "DRIVING_LICENSE": "DRIVING_LICENSE",
+    "DRIVER_LICENSE": "DRIVING_LICENSE",
+    "DRIVER'S_LICENSE_NUMBER": "DRIVING_LICENSE",
+    "AADHAR": "AADHAR",
+    "AADHAAR": "AADHAR",
+    "PAN": "PAN",
+    "IP_ADDRESS": "IP_ADDRESS",
+    "USERNAME": "USERNAME",
+    "PASSWORD": "PASSWORD",
+    "API_KEY": "API_KEY",
+    "DEVICE_ID": "DEVICE_ID",
+    "CRYPTO_WALLET": "CRYPTO_WALLET",
+    "MEDICAL_ID": "MEDICAL_ID",
+    "VOTER_ID": "VOTER_ID",
+    "DOB": "DOB",
+    "DATE_OF_BIRTH": "DOB",
+    "MISC": "MISC",
 }
 
 
@@ -26,16 +65,98 @@ def entity_to_tuple(entity: Dict[str, Any]) -> Tuple[str, int, int]:
     )
 
 def calculate_iou(span_a: Tuple[int, int], span_b: Tuple[int, int]) -> float:
-    """Calculate the Intersection over Union (IoU) of two spans."""
-    if span_a[0] >= span_b[0] and span_a[1] <= span_b[1]:
-        return 1.0
-    if span_a[0] >= span_b[0] and span_a[1] > span_b[1]:
-        return (span_a[1] - span_b[0]) / (span_b[1] - span_b[0])
-    if span_a[0] < span_b[0] and span_a[1] <= span_b[1]:
-        return (span_a[1] - span_b[0]) / (span_b[1] - span_b[0])
-    if span_a[0] < span_b[0] and span_a[1] > span_b[1]:
+    """Calculate the Intersection over Union (IoU) of two half-open spans."""
+
+    a_start, a_end = span_a
+    b_start, b_end = span_b
+
+    if a_end <= a_start or b_end <= b_start:
         return 0.0
-    return 0.0
+
+    intersection_start = max(a_start, b_start)
+    intersection_end = min(a_end, b_end)
+    intersection = max(0, intersection_end - intersection_start)
+    if intersection <= 0:
+        return 0.0
+
+    union = (a_end - a_start) + (b_end - b_start) - intersection
+    return intersection / union if union > 0 else 0.0
+
+
+def _normalize_entity(entity: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(entity, dict):
+        return None
+
+    label = normalize_label(entity.get("label", entity.get("entity_type", "")))
+    try:
+        start = int(entity.get("start", -1))
+        end = int(entity.get("end", -1))
+    except (TypeError, ValueError):
+        return None
+
+    if start < 0 or end < 0 or end <= start:
+        return None
+
+    return {
+        "label": label,
+        "start": start,
+        "end": end,
+        "text": entity.get("text", entity.get("value", "")),
+    }
+
+
+def _dedupe_entities(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen = set()
+    deduped = []
+    for entity in entities:
+        normalized = _normalize_entity(entity)
+        if not normalized:
+            continue
+        key = (normalized["label"], normalized["start"], normalized["end"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(normalized)
+    return deduped
+
+
+def _one_to_one_overlap_match(
+    predicted_entities: List[Dict[str, Any]],
+    ground_truth_entities: List[Dict[str, Any]],
+    iou_threshold: float,
+) -> Tuple[int, int, int]:
+    """Match entities greedily by label and span overlap."""
+
+    preds = _dedupe_entities(predicted_entities)
+    truths = _dedupe_entities(ground_truth_entities)
+
+    matched_truth_indices: Set[int] = set()
+    tp = 0
+    fp = 0
+
+    for pred in preds:
+        best_idx = None
+        best_score = 0.0
+
+        for idx, true in enumerate(truths):
+            if idx in matched_truth_indices:
+                continue
+            if pred["label"] != true["label"]:
+                continue
+
+            score = calculate_iou((pred["start"], pred["end"]), (true["start"], true["end"]))
+            if score >= iou_threshold and score > best_score:
+                best_score = score
+                best_idx = idx
+
+        if best_idx is not None:
+            matched_truth_indices.add(best_idx)
+            tp += 1
+        else:
+            fp += 1
+
+    fn = len(truths) - len(matched_truth_indices)
+    return tp, fp, fn
 
 def calculate_leakage_rate(tp: int, fn: int) -> float:
     """Calculate privacy leakage as the fraction of ground-truth PII left unmasked."""
@@ -57,7 +178,7 @@ def evaluate_pii_detection(text: str, predicted_entities: List[Dict[str, Any]], 
     
     def to_entity_set(entities: List[Dict[str, Any]]) -> Set[Tuple[str, int, int]]:
         """Converts a list of entity dicts to a set of normalized tuples."""
-        return {entity_to_tuple(e) for e in entities}
+        return {entity_to_tuple(e) for e in entities if _normalize_entity(e)}
 
     predicted_set = to_entity_set(predicted_entities)
     ground_truth_set = to_entity_set(ground_truth_entities)
@@ -72,27 +193,11 @@ def evaluate_pii_detection(text: str, predicted_entities: List[Dict[str, Any]], 
     strict_f1 = 2 * (strict_precision * strict_recall) / (strict_precision + strict_recall) if (strict_precision + strict_recall) > 0 else 0.0
 
     # 2. Overlap Matching
-    overlap_tp = 0
-    overlap_fp = 0
-    overlap_fn = 0
-
-    for pred_entity in predicted_entities:
-        pred_label = pred_entity.get("label", pred_entity.get("entity_type", ""))
-        pred_start, pred_end = pred_entity.get("start", -1), pred_entity.get("end", -1)
-
-        for true_entity in ground_truth_entities:
-            true_label = true_entity.get("label", true_entity.get("entity_type", ""))
-            true_start, true_end = true_entity.get("start", -1), true_entity.get("end", -1)
-
-            if pred_label == true_label:
-                iou = calculate_iou((pred_start, pred_end), (true_start, true_end))
-                if iou > 0:
-                    overlap_tp += 1
-            else:
-                overlap_fp += 1
-
-    overlap_fp += len(predicted_entities)
-    overlap_fn += len(ground_truth_entities)
+    overlap_tp, overlap_fp, overlap_fn = _one_to_one_overlap_match(
+        predicted_entities,
+        ground_truth_entities,
+        iou_threshold=iou_threshold,
+    )
 
     overlap_precision = overlap_tp / (overlap_tp + overlap_fp) if (overlap_tp + overlap_fp) > 0 else 0.0
     overlap_recall = overlap_tp / (overlap_tp + overlap_fn) if (overlap_tp + overlap_fn) > 0 else 0.0

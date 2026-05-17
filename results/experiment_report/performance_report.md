@@ -5,33 +5,24 @@ This table shows average performance metrics for each agent count.
 
 |   num_agents |   e2e_ms |   t_inf_ms |   delta_sync_ms |   c_tax_ms |
 |-------------:|---------:|-----------:|----------------:|-----------:|
-|            1 |     0.44 |       0.04 |            0.00 |       0.39 |
-|            2 |     7.71 |       6.72 |            6.79 |       0.99 |
-|            3 |     7.82 |       6.87 |            6.93 |       0.96 |
-|            4 |    13.59 |      12.17 |           12.89 |       1.43 |
-|            5 |    13.93 |      12.53 |           13.19 |       1.40 |
+|            1 |  1046.63 |    1044.10 |            0.00 |       2.54 |
+|            2 |  1163.19 |    1159.70 |           22.31 |       3.49 |
 
 ## Overall Accuracy Summary
 This table shows average accuracy metrics for each agent count.
 
 |   num_agents |   precision |   recall |   f1_score |
 |-------------:|------------:|---------:|-----------:|
-|            1 |        0.26 |     0.29 |       0.28 |
-|            2 |        0.14 |     0.11 |       0.13 |
-|            3 |        0.15 |     0.15 |       0.15 |
-|            4 |        0.13 |     0.17 |       0.15 |
-|            5 |        0.18 |     0.17 |       0.18 |
+|            1 |        0.86 |     0.86 |       0.86 |
+|            2 |        0.60 |     0.86 |       0.71 |
 
 ## Leakage Summary
 Leakage is reported separately for strict and overlap matching.
 
 |   num_agents |   strict_leakage_rate |   overlap_leakage_rate |   leakage_rate |
 |-------------:|----------------------:|-----------------------:|---------------:|
-|            1 |                  0.65 |                   0.76 |           0.76 |
-|            2 |                  0.93 |                   0.92 |           0.92 |
-|            3 |                  0.91 |                   0.90 |           0.90 |
-|            4 |                  0.92 |                   0.89 |           0.89 |
-|            5 |                  0.97 |                   0.89 |           0.89 |
+|            1 |                  0.75 |                   0.12 |           0.12 |
+|            2 |                  0.88 |                   0.12 |           0.12 |
 
 ### Key Metrics Explained
 - **e2e_ms**: End-to-end latency.

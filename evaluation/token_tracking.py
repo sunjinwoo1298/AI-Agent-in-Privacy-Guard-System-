@@ -20,7 +20,6 @@ system simple for experiments.
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
-import re
 from typing import Any, Dict, List, Optional
 
 
@@ -31,8 +30,25 @@ def approx_token_count(text: str) -> int:
     for relative comparisons.
     """
 
-    parts = re.findall(r"\w+|[^\w\s]", text)
-    return len(parts)
+    count = 0
+    current = []
+
+    for char in text:
+        if char.isalnum() or char == "_":
+            current.append(char)
+            continue
+
+        if current:
+            count += 1
+            current = []
+
+        if not char.isspace():
+            count += 1
+
+    if current:
+        count += 1
+
+    return count
 
 
 def _normalize_usage(usage: Any) -> Optional[Dict[str, Any]]:

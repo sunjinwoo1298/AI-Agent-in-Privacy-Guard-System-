@@ -29,6 +29,22 @@ def _normalize_entity(entity: Dict[str, Any], chunk_offset: int) -> Dict[str, An
     return normalized
 
 
+def _dedupe_entities(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen = set()
+    deduped = []
+    for entity in entities:
+        key = (
+            entity.get("label", entity.get("entity_type", "")),
+            int(entity.get("start", -1)),
+            int(entity.get("end", -1)),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entity)
+    return deduped
+
+
 def generalist_worker(
     chunk_queue: queue.Queue,
     result_queue: queue.Queue,
@@ -120,6 +136,7 @@ def run_in_parallel(
             for entity in r["detected_entities"]:
                 if isinstance(entity, dict):
                     all_detected_entities.append(_normalize_entity(entity, chunk_offset))
+    all_detected_entities = _dedupe_entities(sorted(all_detected_entities, key=lambda e: (int(e.get("start", 0)), int(e.get("end", 0)), str(e.get("label", "")))))
 
     # 6. Calculate new metrics
     timings_ms = {"e2e_ms": e2e_ms}

@@ -22,8 +22,7 @@ from pydantic import BaseModel, Field
 
 
 MaskingStrategy = Literal[
-    "regex_only",
-    "spacy_plus",
+    "gliner_pii",
     "parallel_generalist",
 ]
 

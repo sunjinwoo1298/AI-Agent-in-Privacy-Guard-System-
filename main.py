@@ -53,6 +53,8 @@ def run_parallel_privmas_evaluation(
             run_id=str(idx),
             config=cfg,
         )
+        print(f"Aggregated Entities: {state.aggregated_entities}")
+        print(f"Ground Truth Entities: {ground_truth_entities}")
 
         # Evaluate accuracy
         accuracy_results = evaluate_pii_detection(

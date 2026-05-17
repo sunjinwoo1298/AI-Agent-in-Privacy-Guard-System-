@@ -7,6 +7,7 @@ import uuid
 from typing import List, Dict, Any
 
 from agents.deterministic_agent import DeterministicAgent, AgentResult
+from src.ner_backend import load_ner_backend
 from utils.sharding import split_text_into_sentences
 from aggregator.aggregator import merge_masked_sentences
 
@@ -21,12 +22,7 @@ def _process_shard_in_worker(agent_id, shard, use_spacy_flag: bool):
 
     local_agent = DeterministicAgent(agent_id, nlp=None)
     if use_spacy_flag:
-        try:
-            import spacy
-
-            local_agent.nlp = spacy.load("en_core_web_sm")
-        except Exception:
-            local_agent.nlp = None
+        local_agent.nlp = load_ner_backend()
     return local_agent.process(shard)
 
 
@@ -39,13 +35,9 @@ def run_pipeline(text: str, n_agents: int = 2, nlp=None, use_spacy: bool = False
 
     # Optional: use preloaded nlp if provided, else load if use_spacy True
     if nlp is None and use_spacy:
-        try:
-            import spacy
-
-            nlp = spacy.load("en_core_web_sm")
-        except Exception as e:
-            logging.warning("spaCy load failed, continuing without it: %s", e)
-            nlp = None
+        nlp = load_ner_backend()
+        if nlp is None:
+            logging.warning("NER backend load failed, continuing without it.")
 
     # Deterministic sentence splitting with absolute offsets
     sentences = split_text_into_sentences(text)
@@ -68,12 +60,7 @@ def run_pipeline(text: str, n_agents: int = 2, nlp=None, use_spacy: bool = False
             # instantiate agent locally in worker
             local_agent = DeterministicAgent(agent_id, nlp=None)
             if use_spacy_flag:
-                try:
-                    import spacy
-
-                    local_agent.nlp = spacy.load("en_core_web_sm")
-                except Exception:
-                    local_agent.nlp = None
+                local_agent.nlp = load_ner_backend()
             return local_agent.process(shard)
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_agents) as executor:

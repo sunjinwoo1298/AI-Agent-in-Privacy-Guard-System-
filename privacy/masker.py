@@ -1,32 +1,16 @@
 """Privacy masking router for PrivMAS.
 
-This module *reuses* the existing masking functions in `src/single_agent.py`:
-- detect_and_mask_pii_regex
-- detect_and_mask_pii_spacy
-- detect_and_mask_pii_llm
-
-Goal
-----
-Provide a small, configurable, rule-based router that chooses a masking strategy
-based on quick heuristics (length, regex hits, sensitivity keywords, etc.).
-This makes it easy to run ablation studies across different agent counts without
-introducing heavy orchestration logic inside the masker itself.
-
-Important
----------
-We do NOT modify the existing functions in `src/single_agent.py`.
+This module routes all masking through the shared GLiNER PII backend
+(`nvidia/gliner-pii`) so every agent uses the same PII masking core.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 import time
 from typing import Any, Dict, Optional
 
-from config import GROQ_API_KEY
 from core.state import MaskingResult, MaskingStrategy, RoleName
-from evaluation.token_tracking import GroqTokenTracker, approx_token_count
 
 import sys
 import os
@@ -34,28 +18,14 @@ import os
 # Ensure the project root is in the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.masking_functions import (
-    detect_and_mask_pii_regex,
-    detect_and_mask_pii_spacy,
-)
-
-
-_EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
-_PHONE_REGEX = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
-_PLACEHOLDER_REGEX = re.compile(r"\[[A-Z_]+\]")
+from src.masking_functions import detect_and_mask_pii_gliner
 
 
 @dataclass(frozen=True)
 class RouterSignals:
     text_len: int
-    regex_email_hits: int
-    regex_phone_hits: int
     sensitivity_score: int
     capitalized_token_ratio: float
-
-    @property
-    def regex_hits(self) -> int:
-        return self.regex_email_hits + self.regex_phone_hits
 
 
 class PrivacyMasker:
@@ -65,27 +35,21 @@ class PrivacyMasker:
         self._config = config or {}
 
         router_cfg = (self._config.get("privacy") or {}).get("router") or {}
-        self.short_text_threshold: int = int(router_cfg.get("short_text_threshold", 200))
-        self.long_text_threshold: int = int(router_cfg.get("long_text_threshold", 1200))
         self.sensitivity_keywords = [
             str(k).lower() for k in router_cfg.get("sensitivity_keywords", [])
         ]
 
         privacy_cfg = self._config.get("privacy") or {}
-        self.default_strategy: MaskingStrategy = privacy_cfg.get(
-            "default_strategy", "spacy_plus"
-        )
+        self.default_strategy: MaskingStrategy = privacy_cfg.get("default_strategy", "gliner_pii")
 
     @staticmethod
     def _llm_available() -> bool:
         return False
 
     def analyze_text(self, text: str) -> RouterSignals:
-        """Compute cheap signals for routing decisions."""
+        """Compute lightweight signals for telemetry."""
 
         text_len = len(text)
-        email_hits = len(_EMAIL_REGEX.findall(text))
-        phone_hits = len(_PHONE_REGEX.findall(text))
 
         lowered = text.lower()
         sensitivity_score = 0
@@ -93,7 +57,7 @@ class PrivacyMasker:
             if kw and kw in lowered:
                 sensitivity_score += 1
 
-        tokens = re.findall(r"\b\w+\b", text)
+        tokens = self._split_tokens(text)
         if not tokens:
             cap_ratio = 0.0
         else:
@@ -102,32 +66,13 @@ class PrivacyMasker:
 
         return RouterSignals(
             text_len=text_len,
-            regex_email_hits=email_hits,
-            regex_phone_hits=phone_hits,
             sensitivity_score=sensitivity_score,
             capitalized_token_ratio=cap_ratio,
         )
 
     def route(self, text: str) -> MaskingStrategy:
-        """Choose a masking strategy based on heuristics.
+        """Choose the single supported masking strategy."""
 
-        Strategies
-        ----------------------------
-        - regex_only
-        - spacy_plus
-        """
-
-        s = self.analyze_text(text)
-
-        # Very short, obvious-pattern texts → regex
-        if s.text_len <= self.short_text_threshold and s.regex_hits > 0 and s.sensitivity_score == 0:
-            return "regex_only"
-
-        # No regex hits but many proper-noun-like tokens → spaCy
-        if s.regex_hits == 0 and s.capitalized_token_ratio >= 0.25:
-            return "spacy_plus"
-
-        # Default middle-ground
         return self.default_strategy
 
     @staticmethod
@@ -136,7 +81,34 @@ class PrivacyMasker:
 
     @staticmethod
     def _placeholder_count(masked_text: str) -> int:
-        return len(_PLACEHOLDER_REGEX.findall(masked_text))
+        count = 0
+        idx = 0
+        while True:
+            start = masked_text.find("[", idx)
+            if start == -1:
+                break
+            end = masked_text.find("]", start + 1)
+            if end == -1:
+                break
+            token = masked_text[start + 1 : end]
+            if token and all(ch.isupper() or ch == "_" for ch in token):
+                count += 1
+            idx = end + 1
+        return count
+
+    @staticmethod
+    def _split_tokens(text: str) -> list[str]:
+        tokens = []
+        current = []
+        for char in text:
+            if char.isalnum() or char == "_":
+                current.append(char)
+            elif current:
+                tokens.append("".join(current))
+                current = []
+        if current:
+            tokens.append("".join(current))
+        return tokens
 
     def mask(
         self,
@@ -157,16 +129,8 @@ class PrivacyMasker:
         detected_entities = []
 
         try:
-            if chosen == "regex_only":
-                masked, detected_entities = detect_and_mask_pii_regex(text)
-
-            elif chosen == "spacy_plus":
-                masked, detected_entities = detect_and_mask_pii_spacy(text)
-
-            else:
-                # Defensive fallback (should not happen if types are respected)
-                masked, detected_entities = detect_and_mask_pii_regex(text)
-                chosen = "regex_only"
+            masked, detected_entities = detect_and_mask_pii_gliner(text)
+            chosen = "gliner_pii"
 
         except Exception as e:  # pragma: no cover
             error = f"Masking error: {e}"

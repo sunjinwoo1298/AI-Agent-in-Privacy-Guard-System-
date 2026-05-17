@@ -24,7 +24,7 @@ def run_experiments(max_agents: int, max_rows: int):
     all_run_details = []
     
     # Load test data once
-    data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'privmas_dataset_1000.json')
+    data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'test_data.json')
     try:
         with open(data_path, 'r') as f:
             test_data = json.load(f)

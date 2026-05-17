@@ -14,7 +14,7 @@ class GeneralistAgent:
         
         agent_cfg = (self.config.get("agents") or {}).get("generalist", {})
         # The assigned strategy overrides any default sequence.
-        self.strategy = assigned_strategy or agent_cfg.get("default_strategy", "spacy_plus")
+        self.strategy = assigned_strategy or agent_cfg.get("default_strategy", "gliner_pii")
 
     def process_chunk(self, text: str, chunk_id: int) -> Dict[str, Any]:
         """

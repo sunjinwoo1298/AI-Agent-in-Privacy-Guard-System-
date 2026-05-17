@@ -2,9 +2,9 @@
 # This file is safe to commit (no secrets). Put secrets in `.env`.
 
 privacy:
-  # One of: regex_only, spacy_plus, hybrid_fast, llm_only, hybrid_llm
-  default_strategy: hybrid_fast
-  llm_fallback_strategy: hybrid_fast
+  # The project now uses a single shared GLiNER PII backend for masking.
+  default_strategy: gliner_pii
+  llm_fallback_strategy: gliner_pii
 
   router:
     short_text_threshold: 200
@@ -34,13 +34,13 @@ agents:
     detector:
       count: 1
       # Default strategy for this role; Supervisor can override
-      strategy: regex_only
+      strategy: gliner_pii
     analyzer:
       count: 1
-      strategy: spacy_plus
+      strategy: gliner_pii
     validator:
       count: 1
-      strategy: hybrid_llm
+      strategy: gliner_pii
 
 supervisor:
   use_llm: false
@@ -61,8 +61,6 @@ evaluation:
   max_rows: null
 
 generalist:
-    # Strategies to run in sequence for the parallel generalist agent
-    strategies:
-      - regex
-      - spacy
-      - llm
+  # All generalist agents use the shared GLiNER-PII backend.
+  strategies:
+    - gliner_pii
