@@ -1,0 +1,71 @@
+# ==========================================
+# 1. Project-Specific Outputs & Models
+# ==========================================
+# Hugging Face downloaded models, weights, caches, and tokenizers
+.cache/
+cache/
+huggingface_cache/
+.huggingface/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# Metrics, outputs, and figure generation dumps from evaluation runs
+outputs/
+results/
+plots/
+*.png
+*.jpeg
+*.svg
+*.csv
+*.json
+
+# Logs generated during agent orchestration runs
+*.log
+agent_runs/
+
+# ==========================================
+# 2. Jupyter Notebook Specifics
+# ==========================================
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Optional: Un-comment if you do not want to track the data-heavy outputs *inside* the notebooks
+# (Useful if Git gets bloated by notebook matplotlib inline figures)
+# *.ipynb
+
+# ==========================================
+# 3. Python & Environment Environment
+# ==========================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments (Local development setups)
+venv/
+.venv/
+env/
+.env/
+ENV/
+pyenv/
+
+# Pipenv / Poetry / Package managers
+.pypirc
+Pipfile.lock
+poetry.lock
+
+# OS-specific clutter
+.DS_Store
+.DS_Store?
+Thumbs.db
+
+# ==========================================
+# 4. Security & Access Credentials
+# ==========================================
+# API keys (Anthropic Claude API key / Hugging Face tokens configuration files)
+.env
+.env.*
+secrets.json
+config.ini
