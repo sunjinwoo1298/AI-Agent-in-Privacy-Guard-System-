@@ -1,180 +1,352 @@
-# **PrivMAS: A Scalable Multi-Agent System for High-Performance PII Detection and Masking**
+# Empirical Multi-Agent Privacy Evaluation (Production Project)
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+This repo is a production-style refactor of the original research notebook into modular Python.
+It evaluates **multi-agent LLM privacy/PII detection** under different coordination topologies,
+quantifying both:
 
-## Abstract
+- **Quality**: F1 / precision / recall / accuracy (plus FPR/FNR)
+- **Overhead**: end-to-end latency, token usage, context growth
+- **Coordination dynamics**: disagreement and escalation
+- **Reliability**: JSON parse failures / retries (agents must output strict JSON)
 
-The automated detection and redaction of Personally Identifiable Information (PII) is a critical task for safeguarding privacy in large-scale data processing pipelines. However, existing systems often face a trade-off between accuracy and computational performance. This project introduces the **Privacy-preserving Multi-Agent System (PrivMAS)**, a novel architecture designed to address this challenge. PrivMAS leverages a dynamic, parallelized multi-agent framework where autonomous agents concurrently process shards of text using a variety of PII detection strategies. We conduct a comprehensive analysis of the system's scalability, evaluating both performance and accuracy as the number of agents increases. Our findings reveal a near-linear scaling in processing latency but also expose a significant challenge: a degradation in accuracy (F1-score) as the system scales. This suggests complex underlying dynamics in entity aggregation and sharding that present critical avenues for future research in distributed PII detection systems.
+The default backend is a **local Hugging Face chat model** (example: `Qwen/Qwen2-0.5B-Instruct`).
 
----
-
-## 1. Introduction
-
-In an era of big data, the proliferation of sensitive information necessitates robust and efficient mechanisms for PII detection and masking. Traditional monolithic systems, while often accurate, can become bottlenecks when faced with high-throughput data streams. This research explores the hypothesis that a decentralized, multi-agent approach can offer superior performance and scalability.
-
-### 1.1. Research Objectives
-
-This study aims to:
-1.  **Design and Implement PrivMAS:** Develop a scalable multi-agent system for parallel PII detection.
-2.  **Analyze Performance Scaling:** Quantify how system latency and its constituent components evolve as the number of processing agents increases.
-3.  **Evaluate Accuracy Scaling:** Measure the impact of parallelization on the accuracy of PII detection, using both strict and overlap-based matching criteria.
-4.  **Identify System Bottlenecks:** Uncover the architectural and algorithmic factors that limit performance and accuracy in a distributed PII detection environment.
+If you want the original end-to-end notebook, see `../MAS_Privacy_Empirical_Framework_(1).ipynb`.
 
 ---
 
-## 2. System Architecture
+## Why This Project Exists
 
-PrivMAS is designed as a modular pipeline that orchestrates multiple autonomous agents to perform PII detection in parallel.
+Multi-agent systems (MAS) are often justified as improving accuracy by combining multiple “views” of a problem.
+In privacy/PII detection, that accuracy gain comes with real costs:
+
+- More agents ⇒ more inference calls ⇒ higher latency and token cost
+- More coordination ⇒ higher disagreement and sometimes worse outcomes (“coordination collapse”)
+- Structured outputs (JSON) can fail in real LLMs ⇒ must be measured as a reliability metric
+
+This repo makes those trade-offs measurable and reproducible.
+
+---
+
+## End-to-End Flow (What Happens When You Run It)
+
+At a high level, the experiment runner performs a sweep over:
+
+- **Topology**: sequential / parallel / hierarchical / blackboard
+- **Agent count**: `N` agents per pipeline
+- **Trials**: repeated runs with different seeds
+
+For each configuration, it:
+
+1) Builds a dataset of privacy samples (curated + optional HF dataset)
+2) Stratified-samples a small evaluation slice per trial (by difficulty)
+3) Runs the chosen MAS topology on each sample
+4) Aggregates per-sample `PipelineResult`s into a per-configuration `ExperimentMetrics`
+5) Writes artifacts (CSV/JSONL/PNG/TXT) to `outputs/`
+
+---
+
+## System Architecture
 
 ```mermaid
-graph TD
-    subgraph "PrivMAS: Multi-Agent Privacy Guard System"
-        A[Input Text] --> B{Strategy Assigner};
-        B --> C{Shard Text};
-        
-        subgraph "Parallel Agent Processing"
-            direction LR
-            C --> D1[Agent 1];
-            C --> D2[Agent 2];
-            C --> D3[...];
-            C --> Dn[Agent N];
-        end
+flowchart LR
+	A[main.py CLI] --> B[AppConfig]
+	B --> C[experiment.runner.run_experiment]
 
-        subgraph "Agent Internals"
-            direction TB
-            D1 --> E1{PII Detection Strategy};
-            E1 --> F1[Regex];
-            E1 --> G1[spaCy];
-        end
-        
-        D1 --> I{Aggregator};
-        D2 --> I;
-        D3 --> I;
-        Dn --> I;
-        
-        I --> J[Aggregate & Deduplicate Entities];
-        J --> K[Mask Text];
-        K --> L[Masked Output];
-    end
+	C --> D[data.loader.PrivacyDatasetLoader]
+	D --> E[data.sampling.stratified_sample_by_difficulty]
 
-    subgraph "Evaluation Pipeline"
-        A --> M[Ground Truth Entities];
-        J --> N[Predicted Entities];
-        M & N & A --> O{Evaluator};
-        O --> P[Strict Match Metrics];
-        O --> Q["Overlap (IoU) Match Metrics"];
-    end
+	C --> F[pipelines.*Pipeline]
+	F --> G[agents.provider.AgentProvider]
+	G --> H[agents.hf_agent.RealLLMAgent]
+	G --> I[agents.heuristic_agent.HeuristicPrivacyAgent]
 
-    style B fill:#cde4ff,stroke:#333,stroke-width:2px
-    style I fill:#cde4ff,stroke:#333,stroke-width:2px
-    style O fill:#d4edda,stroke:#333,stroke-width:2px
-    style L fill:#f8d7da,stroke:#333,stroke-width:2px
+	F --> J[PipelineResult per sample]
+	J --> K[metrics.core.compute_metrics]
+	K --> L[metrics.csv]
+	J --> M[raw_results.jsonl]
+
+	K --> N[analysis.summary]
+	N --> O[summary.csv]
+	N --> P[stats.txt]
+	N --> Q[viz.plotting -> mas_privacy_results.png]
 ```
 
-**Architectural Components:**
+### Code Map (Where Things Live)
 
-1.  **Strategy Assigner:** A meta-agent that analyzes the input text and determines an optimal high-level strategy.
-2.  **Text Sharding:** The input text is divided into multiple smaller, overlapping chunks (shards). This is a critical step to enable parallel processing.
-3.  **Parallel Agent Processing:** A pool of `N` autonomous `GeneralistAgent` instances receives the shards. Each agent independently applies a PII detection strategy (e.g., Regex, spaCy) to its assigned shard.
-4.  **Aggregator:** The results from all agents, which consist of detected PII entities, are collected by the Aggregator. This component is responsible for merging and deduplicating overlapping or redundant entity predictions from different agents to form a single, coherent set of entities.
-5.  **Masking:** The final, aggregated list of PII entities is used to redact the original text, producing a privacy-safe output.
-
----
-
-## 3. Experimental Setup
-
-### 3.1. Dataset
-
-The system is evaluated on a proprietary JSON dataset (`data/test_data.json`) containing text samples with corresponding ground-truth PII annotations.
-
-### 3.2. Performance Metrics
-
-To understand the system's scalability, we measure the following latency components:
-
-*   **End-to-End Latency ($T_{e2e}$):** The total wall-clock time from receiving the input text to producing the final masked output.
-*   **Critical Path Latency ($T_{inf}$):** The execution time of the slowest agent in the parallel processing pool. This represents the minimum possible latency achievable through parallelization.
-*   **Coordination Tax ($C_{tax}$):** The overhead incurred by the system for sharding, aggregation, and other non-parallelizable tasks. It is defined as:
-    $$
-    C_{tax} = T_{e2e} - T_{inf}
-    $$
-
-### 3.3. Accuracy Metrics
-
-We employ a comprehensive set of metrics to evaluate the accuracy of PII detection.
-
-*   **Precision, Recall, and F1-Score:** These are standard metrics in information retrieval, defined as:
-    $$
-    \text{Precision} = \frac{TP}{TP + FP}
-    $$
-    $$
-    \text{Recall} = \frac{TP}{TP + FN}
-    $$
-    $$
-    F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
-    $$
-    where TP, FP, and FN are the counts of True Positives, False Positives, and False Negatives, respectively.
-
-*   **Matching Criteria:**
-    1.  **Strict Matching:** A prediction is a True Positive if and only if its entity type and exact character span match a ground-truth entity perfectly.
-    2.  **Overlap Matching (IoU):** A prediction is considered a match if its entity type is correct and its character span has an **Intersection over Union (IoU)** with a ground-truth entity's span that exceeds a threshold (set to 0.5 in our experiments).
-        $$
-        \text{IoU}(A, B) = \frac{|A \cap B|}{|A \cup B|}
-        $$
-
-
-
-## 4. Results and Analysis
-
-The system was evaluated by varying the number of agents from 1 to 25.
-
-### 4.1. Performance Scaling Analysis
-
-| num_agents | e2e_ms | t_inf_ms | c_tax_ms |
-|-----------:|-------:|---------:|---------:|
-| 1 | 0.80 | 0.07 | 0.73 |
-| 5 | 25.41 | 23.28 | 2.14 |
-| 10 | 57.19 | 52.50 | 4.69 |
-| 15 | 71.51 | 65.49 | 6.02 |
-| 20 | 101.00 | 92.13 | 8.87 |
-| 25 | 108.06 | 98.45 | 9.61 |
-
-![Performance Scaling](results/plots/comparison/performance_scaling.png)
-
-As shown in the table and the performance scaling plot, the End-to-End Latency ($T_{e2e}$) and Critical Path Latency ($T_{inf}$) increase as more agents are added. This is expected, as more agents lead to more concurrent operations and system load. Crucially, the **Coordination Tax ($C_{tax}$)** remains consistently low and grows sub-linearly, indicating that the architecture is efficient and the overhead of managing agents does not dominate the overall latency. This is a positive result, demonstrating the viability of the parallel architecture from a performance standpoint.
-
-### 4.2. Accuracy Scaling Analysis
-
-| num_agents | precision | recall | f1_score |
-|-----------:|----------:|-------:|---------:|
-| 1 | 0.26 | 0.29 | 0.28 |
-| 5 | 0.16 | 0.17 | 0.17 |
-| 10 | 0.07 | 0.11 | 0.09 |
-| 15 | 0.10 | 0.18 | 0.13 |
-| 20 | 0.06 | 0.11 | 0.08 |
-| 25 | 0.11 | 0.13 | 0.12 |
-
-
-
-The accuracy results present a significant challenge. The F1-score, our primary measure of accuracy, shows a **catastrophic drop** as the number of agents increases from 1. After the initial drop, the F1-score remains low and volatile, never recovering to the single-agent baseline.
-
-This counter-intuitive result suggests that while the system scales well in terms of performance, the process of sharding the text and aggregating the results introduces significant errors. Potential causes include:
-*   **Entity Fragmentation:** PII entities may be split across shard boundaries, making them impossible for any single agent to detect correctly.
-*   **Aggregation Errors:** The logic for merging and deduplicating entities from multiple agents may be flawed, leading to either the loss of true positives or the creation of false positives.
-*   **Context Loss:** Agents operating on small shards have limited context, which can be crucial for accurately identifying certain types of PII.
+- **Entry point / CLI**: `main.py`
+- **Config dataclasses**: `src/mas_privacy_eval/config.py`
+- **Dataset**: `src/mas_privacy_eval/data/`
+	- Curated corpus: `curated_corpus.py`
+	- Loader: `loader.py`
+	- Stratified sampling: `sampling.py`
+- **Agent backends**: `src/mas_privacy_eval/agents/`
+	- HF-backed agent + strict JSON parsing: `hf_agent.py`
+	- Heuristic dry-run backend: `heuristic_agent.py`
+	- Agent factory abstraction: `provider.py`
+	- Role prompts + JSON schemas: `prompts.py`
+- **Coordination topologies**: `src/mas_privacy_eval/pipelines/`
+- **Metrics + bootstrap CI**: `src/mas_privacy_eval/metrics/core.py`
+- **Aggregation + statistics**: `src/mas_privacy_eval/analysis/summary.py`
+- **Plotting to PNG**: `src/mas_privacy_eval/viz/plotting.py`
 
 ---
 
-## 5. Conclusion and Future Work
+## Coordination Topologies (What “N agents” Means)
 
-This research successfully demonstrates the design and implementation of PrivMAS, a scalable multi-agent system for PII detection. From a performance perspective, the system exhibits excellent scalability, with a low and manageable coordination tax.
+All topologies produce a `PipelineResult` per sample (final label + confidence + traces + overhead stats).
 
-However, the key finding of this study is the severe degradation of accuracy as the system scales. This highlights a fundamental tension in distributed NLP systems: the trade-off between the degree of parallelization and the preservation of semantic integrity.
+### 1) Sequential (Chain-of-Agents)
 
-**Future work should focus on addressing this accuracy problem:**
-1.  **Advanced Sharding Algorithms:** Develop context-aware sharding techniques (e.g., sentence-boundary-aware) to minimize entity fragmentation.
-2.  **Sophisticated Aggregation Models:** Implement more intelligent aggregation strategies, potentially using machine learning models to resolve conflicts and merge entity fragments.
-3.  **Hierarchical Agent Structures:** Explore architectures where a higher-level agent is responsible for analyzing and correcting the outputs of the parallel worker agents, particularly at shard boundaries.
-4.  **Error Analysis:** Conduct a detailed qualitative analysis of the errors to precisely categorize the failure modes (e.g., fragmentation, context loss, label confusion) and guide further development.
+- Agents run **one after another**.
+- Each agent sees the **accumulated context** from previous agents.
+- Final decision is a **confidence-weighted vote** over all valid agent labels.
 
-In conclusion, PrivMAS serves as a valuable research platform that not only demonstrates a high-performance architecture but also uncovers critical challenges that must be overcome to build accurate and scalable privacy-preserving systems.
+Implementation: `pipelines/sequential.py`
+
+### 2) Parallel + Consensus
+
+- If `N > 1`: run `N-1` worker agents independently, then run **one Consensus** agent to aggregate.
+- If `N == 1`: run **exactly one worker** and **no Consensus** (so the sweep parameter is consistent).
+- Final decision comes from Consensus when available, otherwise majority/mean vote over workers.
+
+Implementation: `pipelines/parallel.py`
+
+### 3) Hierarchical (Supervisor-Directed)
+
+- Creates a variable number of Detect/Analyze/Validate agents based on `N`.
+- The system builds context progressively and may end with a Consensus step.
+- Final decision is a confidence-weighted vote across the hierarchy.
+
+Implementation: `pipelines/hierarchical.py`
+
+### 4) Blackboard (Shared Memory)
+
+- Agents read/write to a **shared blackboard state**.
+- The blackboard maintains an evolving probability of `label=1` based on agent updates.
+- Final decision is computed from the blackboard probability.
+
+Implementation: `pipelines/blackboard.py`
+
+---
+
+## Agent Roles + JSON Contract (Critical)
+
+Agents are role-specialized (Detector, Analyzer, Validator, Consensus).
+Each role is instructed to return **ONLY a JSON object** with a fixed schema.
+
+Why this matters:
+
+- Real LLMs sometimes output extra text, code fences, or invalid JSON.
+- This system treats parse failure rate as a first-class reliability metric.
+
+See `agents/prompts.py` for the exact schemas. At minimum every agent output must include:
+
+```json
+{
+	"label": 0,
+	"confidence": 0.0,
+	"reasoning": "..."
+}
+```
+
+The HF-backed agent attempts parsing, and on failure it retries with a stricter instruction.
+Retries and failures propagate into the pipeline and metrics.
+
+---
+
+## Dataset
+
+The dataset is intentionally small and auditable by default:
+
+- **Curated corpus** with labeled examples across:
+	- `category`: `pii`, `prompt_injection`, `contextual`, `clean`
+	- `difficulty`: `easy`, `medium`, `hard`
+- **Optional HF dataset** (`ai4privacy/pii-masking-200k`) is supported best-effort (streaming)
+
+Sampling per trial is approximately stratified by difficulty.
+Defaults live in `DatasetConfig` in `src/mas_privacy_eval/config.py`.
+
+---
+
+## Metrics (What Gets Measured)
+
+Per-configuration (topology × N × trial) metrics are computed from per-sample `PipelineResult`s:
+
+### Performance
+- F1, precision, recall, accuracy
+- FPR and FNR (from confusion matrix)
+
+### Systems / Overhead
+- Mean latency (ms/sample), p50/p95 latency
+- Mean token usage (and in/out token split)
+- Mean context size (characters)
+
+### Coordination + Reliability
+- Disagreement rate (fraction of samples with conflicting agent labels)
+- Escalation rate (when Consensus sets `"escalate": true`)
+- JSON parse failure rate + retry rate
+
+---
+
+## Quickstart
+
+1) Create and activate a virtual environment.
+
+2) Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3) Run a tiny sweep to verify wiring end-to-end:
+
+```bash
+python main.py --dry-run
+```
+
+Dry-run uses a lightweight heuristic agent backend (no model download) to validate:
+
+- dataset creation
+- topology wiring
+- metric aggregation
+- artifact generation
+
+4) Run a real model sweep:
+
+```bash
+python main.py
+```
+
+### Useful CLI Options
+
+```bash
+# Choose topologies (comma-separated)
+python main.py --topologies sequential,parallel,hierarchical,blackboard
+
+# Choose agent counts (comma-separated)
+python main.py --agent-counts 1,2,3,4
+
+# Control sweep size
+python main.py --trials 3 --samples 20
+
+# Use deterministic decoding (reduces randomness, not guaranteed fully deterministic on GPU)
+python main.py --no-sampling
+
+# Turn off plots/stats if you only want raw metrics
+python main.py --skip-plots --skip-stats
+```
+
+---
+
+## Outputs (Artifacts + How to Read Them)
+
+Artifacts are written under `outputs/` (change via `--output-dir`).
+
+### 1) `raw_results.jsonl`
+
+One JSON object per evaluated sample with fields like:
+
+- `topology`, `n_agents`, `trial`, `seed`
+- `sample_id`, `true_label`, `pred`, `confidence`
+- `latency_ms`, `tokens`
+- `disagreement`, `escalated`
+- `parse_failures`, `parse_retries`
+- `difficulty`, `category`
+
+Use this file for deeper debugging (which samples fail, where disagreement comes from, etc.).
+
+### 2) `metrics.csv`
+
+One row per (topology, N, trial). This is the core quantitative dataset.
+
+### 3) `summary.csv`
+
+Aggregated mean/std by (topology, N) across trials.
+
+### 4) `stats.txt`
+
+A compact report that mirrors the notebook’s “research write-up” style:
+
+- best N per topology by an efficiency heuristic
+- Mann–Whitney tests across topologies (F1)
+- Spearman correlation for N vs F1 per topology
+- latency scaling analysis (linear vs quadratic fit)
+
+### 5) `mas_privacy_results.png`
+
+Saved plot (no notebook rendering) showing:
+
+- F1 vs N (with bootstrap CI shading)
+- Latency vs N (with bootstrap CI shading)
+- Tokens vs N
+- Disagreement vs N
+
+---
+
+## Results (From the Original Notebook Run)
+
+The notebook includes a stored “real inference” run (as saved inside the `.ipynb`).
+These results are included here to make the project end-to-end and to show the kind of analysis
+the pipeline produces.
+
+Important caveats:
+
+- The notebook run used a specific backend/model (the figure title references **Claude Haiku**).
+- This production refactor defaults to a **local HF model**, so absolute numbers will differ.
+- Treat these as a reference example, not a guarantee of performance.
+
+### Key Findings (Notebook)
+
+- **Best efficiency N\*** (F1 per latency):
+	- `sequential`: N\*=1, F1=0.781, latency≈2914ms
+	- `parallel`: N\*=4, F1=0.679, latency≈16958ms
+- **Topology difference was significant** (Kruskal–Wallis H-test): H=5.436, p=0.0197
+- **Best topology depends on N** (mean F1): sequential wins for N=1–3,5–6; parallel wins at N=4
+
+<details>
+<summary><b>Notebook: Comprehensive Results Table (mean ± std + CI)</b></summary>
+
+```
+	topology    n_agents  F1_mean  F1_std      95%_CI_F1   Prec_mean  Rec_mean   Lat_mean    Tok_mean  Disag_rate  Parse_fail
+	parallel           1    0.664   0.095  [0.556, 0.772]      0.691     0.641   8900.401   1126.833      0.317       0.050
+	parallel           2    0.516   0.291  [0.187, 0.846]      0.589     0.462   9825.014   1122.683      0.300       0.017
+	parallel           3    0.389   0.052  [0.331, 0.448]      0.557     0.308  14125.222   1698.483      0.633       0.050
+	parallel           4    0.679   0.066  [0.605, 0.753]      0.675     0.692  16957.925   2038.900      0.700       0.050
+	parallel           5    0.554   0.150  [0.384, 0.723]      0.611     0.513  20829.862   2697.033      0.817       0.117
+	parallel           6    0.441   0.088  [0.342, 0.541]      0.519     0.385  24205.460   3334.350      0.917       0.133
+	sequential         1    0.781   0.101  [0.667, 0.895]      0.796     0.795   2914.074    367.983      0.000       0.000
+	sequential         2    0.723   0.159  [0.543, 0.903]      0.691     0.769   6725.813    941.233      0.333       0.000
+	sequential         3    0.665   0.025  [0.637, 0.694]      0.645     0.692   9871.288   1369.950      0.583       0.000
+	sequential         4    0.568   0.107  [0.447, 0.689]      0.612     0.538  17145.084   2371.733      0.750       0.117
+	sequential         5    0.691   0.080  [0.600, 0.782]      0.756     0.641  20138.208   2922.867      0.800       0.150
+	sequential         6    0.587   0.076  [0.501, 0.673]      0.592     0.590  25869.994   3815.467      0.783       0.133
+```
+
+</details>
+
+<details>
+<summary><b>Notebook: Significance + Scaling (stdout excerpt)</b></summary>
+
+```
+Topology comparison (F1 scores, Kruskal-Wallis H-test):
+	sequential    : n=18, mean=0.669, std=0.110
+	parallel      : n=18, mean=0.541, std=0.161
+
+	H=5.436, p=0.0197  (significant)
+
+Pairwise topology comparisons (Mann-Whitney U):
+	sequential vs parallel : U=236, p=0.0206
+
+Spearman correlation: N_agents vs F1 per topology:
+	sequential : ρ=-0.481, p=0.0431
+	parallel   : ρ=-0.229, p=0.3597
+
+Latency scaling analysis:
+	parallel   : best fit=linear (lin R²=0.984, quad R²=0.991)
+	sequential : best fit=linear (lin R²=0.987, quad R²=0.990)
+```
+
+</details>
+
+---

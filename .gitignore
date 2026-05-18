@@ -1,8 +1,0 @@
-
-# Environment variables
-.env
-.env.*
-config.local.yaml
-*.pyc
-__pycache__/
-.venv/

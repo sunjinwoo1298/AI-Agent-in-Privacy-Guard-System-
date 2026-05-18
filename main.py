@@ -1,187 +1,96 @@
-import pandas as pd
+"""Project entry point.
+
+Runs an empirical multi-agent privacy evaluation sweep and writes results to disk.
+"""
+
+from __future__ import annotations
+
 import argparse
-import json
-from typing import Any, Dict, List, Optional
+import logging
+import sys
+from pathlib import Path
+from typing import List
 
 
-def run_parallel_privmas_evaluation(
-    *,
-    config_path: str = "config.yaml",
-    data_path: str = "data/test_data.json",
-    max_rows: Optional[int] = None,
-    num_agents: Optional[int] = None,
-    quiet: bool = False,
-    test_data: Optional[List[Dict[str, Any]]] = None,
-):
-    """Run the parallel PrivMAS workflow on the sample dataset."""
-    from config import load_config
-    from graph.parallel_workflow import run_in_parallel
-    from evaluation.accuracy import evaluate_pii_detection
+# Allow running from a src-layout project without installing the package.
+_ROOT = Path(__file__).resolve().parent
+_SRC = _ROOT / "src"
+if _SRC.is_dir() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
-    cfg: Dict[str, Any] = load_config(config_path)
-
-    if num_agents is not None:
-        cfg.setdefault("agents", {})
-        cfg["agents"]["generalist_count"] = int(num_agents)
-
-    if test_data is None:
-        try:
-            with open(data_path, 'r') as f:
-                test_data = json.load(f)
-        except FileNotFoundError:
-            if not quiet:
-                print(f"Error: {data_path} not found.")
-            return pd.DataFrame()
-
-    if max_rows is not None:
-        test_data = test_data[:int(max_rows)]
-
-    df = pd.DataFrame(test_data)
-
-    outputs = []
-
-    if not quiet:
-        print("\n=== Parallel PrivMAS Evaluation ===")
-    for idx, row in df.iterrows():
-        text = str(row.get("text", ""))
-        label = row.get("label")
-        ground_truth_entities = row.get("entities", [])
-
-        state = run_in_parallel(
-            text=text,
-            label=None if label is None else str(label),
-            run_id=str(idx),
-            config=cfg,
-        )
-        print(f"Aggregated Entities: {state.aggregated_entities}")
-        print(f"Ground Truth Entities: {ground_truth_entities}")
-
-        # Evaluate accuracy
-        accuracy_results = evaluate_pii_detection(
-            text=text,
-            predicted_entities=state.aggregated_entities,
-            ground_truth_entities=ground_truth_entities
-        )
-        
-        # Extract metrics for DataFrame
-        strict_metrics = accuracy_results.get("strict", {})
-        overlap_metrics = accuracy_results.get("overlap", {})
-        strict_leakage_rate = accuracy_results.get("strict_leakage_rate", strict_metrics.get("leakage_rate", 0.0))
-        overlap_leakage_rate = accuracy_results.get("overlap_leakage_rate", overlap_metrics.get("leakage_rate", 0.0))
+from mas_privacy_eval.config import AppConfig, ExperimentConfig, ModelConfig
+from mas_privacy_eval.experiment.runner import run_experiment
+from mas_privacy_eval.logging_config import configure_logging
 
 
-        outputs.append(
-            {
-                "id": idx,
-                "text": text,
-                "label": label,
-                "final_strategy": state.final_strategy,
-                "final_masked": state.final_masked_text,
-                "e2e_ms": (state.timings_ms or {}).get("e2e_ms"),
-                "t_inf_ms": (state.timings_ms or {}).get("t_inf_ms"),
-                "delta_sync_ms": (state.timings_ms or {}).get("delta_sync_ms"),
-                "c_tax_ms": (state.timings_ms or {}).get("c_tax_ms"),
-                "errors": len(state.errors),
-                "agent_details": state.specialist_results,
-                
-                # Strict metrics
-                "strict_precision": strict_metrics.get("precision"),
-                "strict_recall": strict_metrics.get("recall"),
-                "strict_f1": strict_metrics.get("f1"),
-                "strict_tp": strict_metrics.get("tp"),
-                "strict_fp": strict_metrics.get("fp"),
-                "strict_fn": strict_metrics.get("fn"),
-
-                # Overlap metrics
-                "overlap_precision": overlap_metrics.get("precision"),
-                "overlap_recall": overlap_metrics.get("recall"),
-                "overlap_f1": overlap_metrics.get("f1"),
-                "overlap_tp": overlap_metrics.get("tp"),
-                "overlap_fp": overlap_metrics.get("fp"),
-                "overlap_fn": overlap_metrics.get("fn"),
-
-                # Leakage
-                "strict_leakage_rate": strict_leakage_rate,
-                "overlap_leakage_rate": overlap_leakage_rate,
-                "leakage_rate": overlap_leakage_rate,
-            }
-        )
-        if not quiet:
-            e2e_ms = outputs[-1]["e2e_ms"]
-            e2e_ms_display = float(e2e_ms) if e2e_ms is not None else float("nan")
-            print(f"\nRow {idx} | strategy={state.final_strategy} | e2e_ms={e2e_ms_display:.1f}")
-            
-            # Display agent-specific details
-            if state.specialist_results:
-                print("Agent Breakdown:")
-                for agent_detail in state.specialist_results:
-                    strategy = agent_detail.get('strategy', 'N/A')
-                    latency = agent_detail.get('latency_ms', float('nan'))
-                    print(f"  - Agent {agent_detail.get('chunk_id')}: {strategy} ({latency:.1f}ms)")
-
-            print(state.final_masked_text)
-            print(f"Accuracy (Strict): Precision={strict_metrics.get('precision', 0):.2f}, Recall={strict_metrics.get('recall', 0):.2f}, F1={strict_metrics.get('f1', 0):.2f}")
-            print(f"Accuracy (Overlap): Precision={overlap_metrics.get('precision', 0):.2f}, Recall={overlap_metrics.get('recall', 0):.2f}, F1={overlap_metrics.get('f1', 0):.2f}")
-            print(f"Leakage (Strict): {strict_leakage_rate:.2%}")
-            print(f"Leakage (Overlap): {overlap_leakage_rate:.2%}")
+logger = logging.getLogger(__name__)
 
 
-    out_df = pd.DataFrame(outputs)
-    if not quiet:
-        print("\n=== Parallel PrivMAS Summary ===")
-        print(
-            out_df[
-                [
-                    "id",
-                    "final_strategy",
-                    "e2e_ms",
-                    "t_inf_ms",
-                    "delta_sync_ms",
-                    "c_tax_ms",
-                    "errors",
-                    "precision",
-                    "recall",
-                    "f1_score",
-                    "strict_precision",
-                    "strict_recall",
-                    "strict_f1",
-                    "strict_tp",
-                    "strict_fp",
-                    "strict_fn",
-                    "overlap_precision",
-                    "overlap_recall",
-                    "overlap_f1",
-                    "overlap_tp",
-                    "overlap_fp",
-                    "overlap_fn",
-                    "strict_leakage_rate",
-                    "overlap_leakage_rate",
-                    "leakage_rate",
-                ]
-            ]
-        )
-    
-    return out_df
+def _parse_int_list(csv: str) -> List[int]:
+    items = [s.strip() for s in csv.split(",") if s.strip()]
+    return [int(x) for x in items]
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Agentic_AI: Parallel PrivMAS runner")
-    parser.add_argument("--config", default="config.yaml", help="Path to PrivMAS config YAML")
-    parser.add_argument(
-        "--data-path",
-        default="data/sample_data.csv",
-        help="Path to CSV with a 'text' column (and optional 'label')",
-    )
-    parser.add_argument("--max-rows", type=int, default=None, help="Optional row limit")
-    parser.add_argument("--num-agents", type=int, default=None, help="Override generalist agent count for parallel mode")
+def build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Empirical multi-agent privacy evaluation")
 
-    args = parser.parse_args()
+    # Model
+    p.add_argument("--model", dest="model_name", default=ModelConfig().model_name)
+    p.add_argument("--max-new-tokens", type=int, default=ModelConfig().max_new_tokens)
+    p.add_argument("--temperature", type=float, default=ModelConfig().temperature)
+    p.add_argument("--top-p", type=float, default=ModelConfig().top_p)
+    p.add_argument("--no-sampling", action="store_true", help="Disable sampling for generation")
 
-    run_parallel_privmas_evaluation(
-        config_path=args.config,
-        max_rows=args.max_rows,
-        num_agents=args.num_agents,
+    # Experiment
+    p.add_argument("--agent-counts", type=str, default=",".join(map(str, ExperimentConfig().agent_counts)))
+    p.add_argument("--topologies", type=str, default=",".join(ExperimentConfig().topologies))
+    p.add_argument("--trials", type=int, default=ExperimentConfig().n_trials)
+    p.add_argument("--samples", type=int, default=ExperimentConfig().n_samples_per_trial)
+    p.add_argument("--dry-run", action="store_true", help="Run a tiny sweep for verification")
+    p.add_argument("--seed", type=int, default=ExperimentConfig().master_seed)
+    p.add_argument("--output-dir", type=Path, default=ExperimentConfig().output_dir)
+
+    # Output controls
+    p.add_argument("--skip-plots", action="store_true")
+    p.add_argument("--skip-stats", action="store_true")
+
+    # Logging
+    p.add_argument("--log-level", type=str, default=AppConfig().log_level)
+    return p
+
+
+def main() -> int:
+    args = build_arg_parser().parse_args()
+    configure_logging(args.log_level)
+
+    app_config = AppConfig(
+        log_level=args.log_level,
+        model=ModelConfig(
+            model_name=args.model_name,
+            max_new_tokens=args.max_new_tokens,
+            do_sample=not args.no_sampling,
+            temperature=args.temperature,
+            top_p=args.top_p,
+        ),
+        experiment=ExperimentConfig(
+            agent_counts=_parse_int_list(args.agent_counts),
+            topologies=[s.strip() for s in args.topologies.split(",") if s.strip()],
+            n_trials=args.trials,
+            n_samples_per_trial=args.samples,
+            dry_run=args.dry_run,
+            master_seed=args.seed,
+            output_dir=args.output_dir,
+        ),
     )
 
+    logger.info("Starting experiment")
+    logger.info("Model: %s", app_config.model.model_name)
+    logger.info("Topologies: %s", app_config.experiment.topologies)
+    logger.info("Agent counts: %s", app_config.experiment.agent_counts)
+    run_experiment(app_config, make_plots=not args.skip_plots, run_stats=not args.skip_stats)
+    logger.info("Done")
+    return 0
 
 
+if __name__ == "__main__":
+    raise SystemExit(main())
