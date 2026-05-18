@@ -11,3 +11,4 @@ accelerate>=0.30.0
 torch>=2.2.0
 sentencepiece>=0.2.0
 tiktoken>=0.7.0
+streamlit>=1.37.0

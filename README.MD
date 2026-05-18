@@ -218,6 +218,33 @@ Dry-run uses a lightweight heuristic agent backend (no model download) to valida
 python main.py
 ```
 
+5) Launch the Streamlit UI:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+If you hit a PyTorch/Streamlit watcher crash on Windows, run:
+
+```bash
+set STREAMLIT_SERVER_FILE_WATCHER_TYPE=none
+streamlit run streamlit_app.py
+```
+
+The UI lets you:
+
+- choose the topology and agent count
+- use the curated corpus or upload your own CSV/JSONL dataset
+- run the selected pipeline
+- inspect per-sample outputs, aggregated metrics, and analysis text
+
+For uploads, the dataset should include at least a `text` column. Optional columns:
+
+- `label` or `true_label`
+- `difficulty`
+- `category`
+- `source`
+
 ### Useful CLI Options
 
 ```bash
